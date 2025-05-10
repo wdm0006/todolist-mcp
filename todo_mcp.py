@@ -2,19 +2,20 @@
 # /// script
 # dependencies = [
 #   "sqlmodel>=0.0.14,<0.1.0",
-#   "mcp[cli]>=1.7.0,<2.0.0" 
+#   "mcp[cli]>=1.7.0,<2.0.0"
 # ]
 # ///
 
 import enum
 from datetime import datetime, date
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, Dict, Any, Union
 import pathlib
-import argparse # For command-line arguments
-import sys # To ensure we don't exit if mcp has other args
+import argparse
+import sys
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
-from mcp.server.fastmcp import FastMCP # MCP Import
+from mcp.server.fastmcp import FastMCP
+
 
 # --- Argument Parsing for Project Directory ---
 def parse_cli_args():
@@ -27,13 +28,13 @@ def parse_cli_args():
     parser.add_argument(
         "--project-dir",
         type=str,
-        required=False, # Will check for None and handle later if needed for __main__
-        help="The absolute path to the project directory where todo.db will be stored."
+        required=False,
+        help="The absolute path to the project directory where todo.db will be stored.",
     )
-    # Try to parse known args. If running under mcp[cli] directly, it might not have these args.
-    # If __name__ == "__main__", we will make it effectively required.
+
     known_args, _ = parser.parse_known_args()
     return known_args
+
 
 cli_args = parse_cli_args()
 
@@ -41,17 +42,20 @@ cli_args = parse_cli_args()
 if cli_args.project_dir:
     PROJECT_DIR_PATH = pathlib.Path(cli_args.project_dir).resolve()
     if not PROJECT_DIR_PATH.is_dir():
-        print(f"Error: Provided project directory does not exist or is not a directory: {PROJECT_DIR_PATH}", file=sys.stderr)
-        sys.exit(1) # Exit if project_dir is provided but invalid
+        print(
+            f"Error: Provided project directory does not exist or is not a directory: {PROJECT_DIR_PATH}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     DATABASE_FILE = PROJECT_DIR_PATH / "todo.db"
     DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
 else:
-    # Default behavior if --project-dir is not provided (e.g. when not run via __main__ or for testing)
-    # This could be an in-memory DB or a default local path, or an error if always required.
-    # For now, let's default to a local file in the script's dir if not specified, 
-    # but recommend --project-dir for explicit control.
-    print("Warning: --project-dir not specified. Defaulting todo.db to script's directory parent. Use --project-dir for explicit control.", file=sys.stderr)
-    DATABASE_FILE = pathlib.Path(__file__).resolve().parent.parent / "todo.db" # Fallback to old logic
+    print(
+        "Warning: --project-dir not specified. Defaulting todo.db to script's"
+        " directory parent. Use --project-dir for explicit control.",
+        file=sys.stderr,
+    )
+    DATABASE_FILE = pathlib.Path(__file__).resolve().parent.parent / "todo.db"  # Fallback to old logic
     DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
 
 
@@ -59,25 +63,30 @@ engine = create_engine(DATABASE_URL)
 
 # MCP Server instance
 mcp_server = FastMCP(
-    name="TodoMCP", 
-    description="A simple MCP server for managing a todo list. Configure with --project-dir at startup."
+    name="TodoMCP", description="A simple MCP server for managing a todo list. Configure with --project-dir at startup."
 )
+
 
 class Status(str, enum.Enum):
     """Enumeration for todo item status."""
+
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     DONE = "done"
     CANCELLED = "cancelled"
 
+
 class Priority(str, enum.Enum):
     """Enumeration for todo item priority."""
+
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
+
 # Define a mapping for sorting priorities if needed, e.g., high=1, medium=2, low=3
 PRIORITY_ORDER = {Priority.HIGH: 1, Priority.MEDIUM: 2, Priority.LOW: 3}
+
 
 class Todo(SQLModel, table=True):
     """
@@ -92,6 +101,7 @@ class Todo(SQLModel, table=True):
         due_date (date, optional): Due date.
         tags (str, optional): Comma-separated tags.
     """
+
     id: Optional[int] = Field(default=None, primary_key=True)
     description: str = Field(index=True)
     status: Status = Field(default=Status.OPEN, index=True)
@@ -99,7 +109,8 @@ class Todo(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     due_date: Optional[date] = Field(default=None, index=True)
-    tags: Optional[str] = Field(default=None, index=True) # Comma-separated
+    tags: Optional[str] = Field(default=None, index=True)
+
 
 def create_db_and_tables():
     """
@@ -107,7 +118,7 @@ def create_db_and_tables():
     """
     SQLModel.metadata.create_all(engine)
 
-# Helper to convert Todo model to dict, ensuring dates are strings
+
 def todo_to_dict(todo_item: Todo) -> Dict[str, Any]:
     """
     Convert a Todo model instance to a dictionary, formatting dates as ISO strings.
@@ -124,6 +135,7 @@ def todo_to_dict(todo_item: Todo) -> Dict[str, Any]:
     if item_dict.get("updated_at") and isinstance(item_dict["updated_at"], datetime):
         item_dict["updated_at"] = item_dict["updated_at"].isoformat()
     return item_dict
+
 
 # --- Enum Mapping Helpers ---
 def parse_status(value: Optional[Union[str, Status]]) -> Optional[Status]:
@@ -144,6 +156,7 @@ def parse_status(value: Optional[Union[str, Status]]) -> Optional[Status]:
             return s
     raise ValueError(f"Invalid status: '{value}'. Valid: {[s.value for s in Status]}")
 
+
 def parse_priority(value: Optional[Union[str, Priority]]) -> Optional[Priority]:
     """
     Convert a string or Priority to a Priority enum value.
@@ -162,12 +175,13 @@ def parse_priority(value: Optional[Union[str, Priority]]) -> Optional[Priority]:
             return p
     raise ValueError(f"Invalid priority: '{value}'. Valid: {[p.value for p in Priority]}")
 
+
 @mcp_server.tool()
 def add_item(
     description: str,
-    priority: str = Priority.MEDIUM,  # Changed from Union[str, Priority]
-    due_date_str: Optional[str] = None, # YYYY-MM-DD
-    tags: Optional[str] = None # Comma-separated
+    priority: str = Priority.MEDIUM,
+    due_date_str: Optional[str] = None,
+    tags: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Add a new todo item.
@@ -196,20 +210,21 @@ def add_item(
             priority=priority_enum,
             due_date=parsed_due_date,
             tags=tags,
-            updated_at=datetime.utcnow() # Ensure updated_at is set on creation too
+            updated_at=datetime.utcnow(),
         )
         session.add(todo)
         session.commit()
         session.refresh(todo)
         return todo_to_dict(todo)
 
+
 @mcp_server.tool()
 def list_items(
     show_all_statuses: bool = False,
-    status_filter: Optional[str] = None,  # Changed from Optional[Union[str, Status]]
-    priority_filter: Optional[str] = None,  # Changed from Optional[Union[str, Priority]]
-    sort_by: Optional[str] = None, # 'priority', 'due_date', 'created_at', 'status', 'description', 'id'. Prepended with '-' for desc.
-    tag_filter: Optional[str] = None
+    status_filter: Optional[str] = None,
+    priority_filter: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    tag_filter: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     List todo items with optional filters and sorting.
@@ -240,7 +255,7 @@ def list_items(
 
         if priority_enum:
             statement = statement.where(Todo.priority == priority_enum)
-        
+
         if tag_filter:
             statement = statement.where(Todo.tags.like(f"%{tag_filter}%"))
 
@@ -251,56 +266,47 @@ def list_items(
 
             if field_name not in valid_sort_fields:
                 return {"error": f"Invalid sort field '{field_name}'. Valid fields: {valid_sort_fields}"}
-            
+
             sort_column = getattr(Todo, field_name)
-            
-            # For priority, we sort post-query for custom enum order
-            if field_name != "priority": 
+
+            if field_name != "priority":
                 if descending:
                     statement = statement.order_by(sort_column.desc())
                 else:
                     statement = statement.order_by(sort_column.asc())
-            # If sorting by priority, or default sort, handle post-query
 
         else:
-            # Default sort order (will be refined post-query for priority)
             statement = statement.order_by(Todo.due_date.asc(), Todo.created_at.asc())
 
         results = session.exec(statement).all()
-        
-        # Post-query sorting for priority and default multi-key sort
+
         def sort_key(item: Todo):
             return (
                 PRIORITY_ORDER[item.priority],
-                item.due_date if item.due_date else date.max, # Sort None due dates last
-                item.created_at
+                item.due_date if item.due_date else date.max,
+                item.created_at,
             )
 
-        # Apply sorting
         if sort_by:
             descending_sort = sort_by.startswith("-")
             actual_sort_field = sort_by[1:] if descending_sort else sort_by
             if actual_sort_field == "priority":
-                # Sort by custom key if sorting by priority
                 results = sorted(results, key=sort_key, reverse=descending_sort)
-            # else: other fields are assumed to be handled by DB sort_column if specified earlier
-            # If sort_by was a non-priority field, it was applied to 'statement'
-            # If results were fetched without specific order for non-priority field here, they remain as fetched.
-        else: # Default sort if no sort_by is specified
+        else:
             results = sorted(results, key=sort_key)
 
-        # Ensure the return is always a list of dictionaries for the success case
         processed_results = [todo_to_dict(item) for item in results]
         return {"items": processed_results}
+
 
 @mcp_server.tool()
 def update_item(
     item_id: int,
     description: Optional[str] = None,
-    status: Optional[str] = None,  # Changed from Optional[Union[str, Status]]
-    priority: Optional[str] = None,  # Changed from Optional[Union[str, Priority]]
-    due_date_str: Optional[str] = None, # YYYY-MM-DD or 'none' to clear
-    tags: Optional[str] = None # Comma-separated string or 'none' to clear
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    due_date_str: Optional[str] = None,
+    tags: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Update an existing todo item. Only provided fields will be changed.
@@ -336,7 +342,7 @@ def update_item(
                 return {"error": str(e)}
             updated = True
         if due_date_str is not None:
-            if due_date_str.lower() == 'none':
+            if due_date_str.lower() == "none":
                 todo.due_date = None
             else:
                 try:
@@ -345,7 +351,7 @@ def update_item(
                     return {"error": f"Invalid date format for due date: '{due_date_str}'. Use YYYY-MM-DD or 'none'."}
             updated = True
         if tags is not None:
-            todo.tags = None if tags.lower() == 'none' else tags
+            todo.tags = None if tags.lower() == "none" else tags
             updated = True
 
         if updated:
@@ -357,6 +363,7 @@ def update_item(
         else:
             return {"message": "No changes specified for the item.", "item": todo_to_dict(todo)}
 
+
 @mcp_server.tool()
 def mark_item_done(item_id: int) -> Dict[str, Any]:
     """
@@ -367,6 +374,7 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
         dict: The updated todo item as a dictionary, or an error message.
     """
     return update_item(item_id=item_id, status=Status.DONE)
+
 
 @mcp_server.tool()
 def remove_item(item_id: int) -> Dict[str, Any]:
@@ -381,21 +389,20 @@ def remove_item(item_id: int) -> Dict[str, Any]:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
-        
-        item_description = todo.description # store before deleting
+
+        item_description = todo.description
         session.delete(todo)
         session.commit()
         return {"message": f"Removed todo item #{item_id}: '{item_description}'", "id": item_id, "status": "removed"}
 
+
 if __name__ == "__main__":
-    # When run directly, --project-dir becomes mandatory.
-    # Re-parse with 'required=True' or check if cli_args.project_dir is None.
     if not cli_args.project_dir:
         print("Error: --project-dir is required when running the server directly.", file=sys.stderr)
         print("Usage: python scripts/todo_mcp.py --project-dir /path/to/your/project_root", file=sys.stderr)
         sys.exit(1)
-    
+
     print(f"Starting TodoMCP server. Database: {DATABASE_FILE.resolve()}")
     print("Ensure --project-dir is set correctly if not using default.")
-    create_db_and_tables() # Ensure DB and tables exist before starting server
-    mcp_server.run() # Starts the MCP server 
+    create_db_and_tables()
+    mcp_server.run()

@@ -1,0 +1,33 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Todo List MCP Server: Project Structure & Tool Reference
+
+This project implements a Model Context Protocol (MCP) server for managing a todo list, backed by SQLite. It exposes a set of tools for adding, listing, updating, and removing todo items, making it easy to integrate with AI assistants and development tools.
+
+## Main Files
+
+- [todo_mcp.py](mdc:todo_mcp.py): Main server script. Defines the todo item model, database logic, and all MCP tool endpoints (`add-item`, `list-items`, `update-item`, `mark-item-done`, `remove-item`).
+- [README.md](mdc:README.md): Project overview, installation, usage, and detailed tool reference.
+- [tests/test_update_item.py](mdc:tests/test_update_item.py): Pytest-based tests for the `update-item` tool and related logic.
+- [LICENSE](mdc:LICENSE): MIT license for the project.
+
+## MCP Tool Endpoints (from [README.md](mdc:README.md))
+
+- **add-item**: Add a new todo item. Params: description, priority, due date, tags.
+- **list-items**: List todo items with optional filters (status, priority, tags, sorting).
+- **update-item**: Update fields of an existing todo item (description, status, priority, due date, tags).
+- **mark-item-done**: Mark a todo item as done by ID.
+- **remove-item**: Remove a todo item by ID.
+
+See [README.md](mdc:README.md) for full parameter and return details for each tool.
+
+## Testing
+
+Tests are located in [tests/test_update_item.py](mdc:tests/test_update_item.py) and use pytest fixtures to validate update logic and error handling.
+
+## License
+
+MIT License. See [LICENSE](mdc:LICENSE) for details.

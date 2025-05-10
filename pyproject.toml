@@ -1,0 +1,36 @@
+[project]
+name = "todolist-mcp"
+version = "0.1.0"
+description = "MCP server for managing a todo list with SQLite."
+requires-python = ">=3.10"
+dependencies = [
+    "sqlmodel>=0.0.14,<0.1.0",
+    "mcp[cli]>=1.7.0,<2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "pytest"
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "S"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["stargazers"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Ignore unused imports in __init__.py files
+"tests/**/*.py" = ["B011", "S101"]  # Ignore assert warnings in test files
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

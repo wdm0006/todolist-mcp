@@ -1,10 +1,10 @@
 import pytest
 from sqlmodel import SQLModel, Session, create_engine
-from datetime import datetime
-from todo_mcp import Todo, Status, Priority, update_item, add_item, engine
+from todo_mcp import Todo, Priority, update_item
 
 import tempfile
 import os
+
 
 @pytest.fixture(scope="function")
 def temp_db(monkeypatch):
@@ -17,6 +17,7 @@ def temp_db(monkeypatch):
     yield test_engine
     os.unlink(tf.name)
 
+
 @pytest.fixture(scope="function")
 def sample_todo(temp_db):
     # Add a sample todo item
@@ -27,11 +28,13 @@ def sample_todo(temp_db):
         session.refresh(todo)
         return todo.id
 
+
 def test_update_status_in_progress(temp_db, sample_todo):
     # Should allow status as string 'in_progress'
     result = update_item(item_id=sample_todo, status="in_progress")
     assert result["status"] == "in_progress"
     assert result["id"] == sample_todo
+
 
 def test_update_status_invalid(temp_db, sample_todo):
     # Should return error for invalid status
@@ -39,10 +42,12 @@ def test_update_status_invalid(temp_db, sample_todo):
     assert "error" in result
     assert "Invalid status" in result["error"]
 
+
 def test_update_priority_string(temp_db, sample_todo):
     # Should allow priority as string
     result = update_item(item_id=sample_todo, priority="high")
     assert result["priority"] == "high"
+
 
 def test_update_multiple_fields(temp_db, sample_todo):
     # Should update multiple fields
@@ -51,8 +56,9 @@ def test_update_multiple_fields(temp_db, sample_todo):
     assert result["priority"] == "low"
     assert result["description"] == "Updated desc"
 
+
 def test_update_item_not_found(temp_db):
     # Should return error for non-existent item
     result = update_item(item_id=9999, status="done")
     assert "error" in result
-    assert "not found" in result["error"] 
+    assert "not found" in result["error"]
