@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, Union
 import pathlib
 import argparse
 import sys
+import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
 from mcp.server.fastmcp import FastMCP
@@ -137,6 +138,16 @@ def todo_to_dict(todo_item: Todo) -> Dict[str, Any]:
     return item_dict
 
 
+def suggest_correction(value: str, valid_values: list[str]) -> str:
+    """
+    Suggest the closest valid value using difflib.get_close_matches.
+    """
+    matches = difflib.get_close_matches(value, valid_values, n=1)
+    if matches:
+        return f"Did you mean '{matches[0]}'?"
+    return ""
+
+
 # --- Enum Mapping Helpers ---
 def parse_status(value: Optional[Union[str, Status]]) -> Optional[Status]:
     """
@@ -154,7 +165,31 @@ def parse_status(value: Optional[Union[str, Status]]) -> Optional[Status]:
     for s in Status:
         if value_str == s.value or value_str == s.name.lower():
             return s
-    raise ValueError(f"Invalid status: '{value}'. Valid: {[s.value for s in Status]}")
+    valid = [s.value for s in Status]
+    suggestion = suggest_correction(value_str, valid)
+    raise ValueError(f"Invalid status: '{value}'. Valid: {valid}. {suggestion}")
+
+
+def parse_status_list(value: Optional[Union[str, Status, list[str], list[Status]]]) -> Optional[list[Status]]:
+    """
+    Convert a string, Status, list of strings, or list of Status to a list of Status enums.
+    Args:
+        value (str, Status, list[str], list[Status], or None): Input value(s).
+    Returns:
+        list[Status] or None: List of Status enums or None.
+    Raises:
+        ValueError: If any input is not a valid status.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (str, Status)):
+        return [parse_status(value)]
+    if isinstance(value, list):
+        result = []
+        for v in value:
+            result.append(parse_status(v))
+        return result
+    raise ValueError(f"Invalid status_filter: {value}")
 
 
 def parse_priority(value: Optional[Union[str, Priority]]) -> Optional[Priority]:
@@ -173,7 +208,32 @@ def parse_priority(value: Optional[Union[str, Priority]]) -> Optional[Priority]:
     for p in Priority:
         if value_str == p.value or value_str == p.name.lower():
             return p
-    raise ValueError(f"Invalid priority: '{value}'. Valid: {[p.value for p in Priority]}")
+    valid = [p.value for p in Priority]
+    suggestion = suggest_correction(value_str, valid)
+    raise ValueError(f"Invalid priority: '{value}'. Valid: {valid}. {suggestion}")
+
+
+def parse_priority_list(value: Optional[Union[str, Priority, list[str], list[Priority]]]) -> Optional[list[Priority]]:
+    if value is None:
+        return None
+    if isinstance(value, (str, Priority)):
+        return [parse_priority(value)]
+    if isinstance(value, list):
+        result = []
+        for v in value:
+            result.append(parse_priority(v))
+        return result
+    raise ValueError(f"Invalid priority_filter: {value}")
+
+
+def parse_tag_list(value: Optional[Union[str, list[str]]]) -> Optional[list[str]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    raise ValueError(f"Invalid tag_filter: {value}")
 
 
 @mcp_server.tool()
@@ -221,43 +281,65 @@ def add_item(
 @mcp_server.tool()
 def list_items(
     show_all_statuses: bool = False,
-    status_filter: Optional[str] = None,
-    priority_filter: Optional[str] = None,
+    status_filter: Optional[Union[str, Status, list[Union[str, Status]]]] = None,
+    priority_filter: Optional[Union[str, Priority, list[Union[str, Priority]]]] = None,
     sort_by: Optional[str] = None,
-    tag_filter: Optional[str] = None,
+    tag_filter: Optional[Union[str, list[str]]] = None,
 ) -> Dict[str, Any]:
     """
     List todo items with optional filters and sorting.
+
     Args:
         show_all_statuses (bool, optional): If True, show all statuses. Defaults to False.
-        status_filter (str, optional): Filter by status. Must be one of: 'open', 'in_progress', 'done', 'cancelled'.
-        priority_filter (str, optional): Filter by priority. Must be one of: 'high', 'medium', 'low'.
-        sort_by (str, optional): Field to sort by. Prefix with '-' for descending.
-        tag_filter (str, optional): Filter by tag substring.
+        status_filter (str, Status, or list[str|Status], optional): Filter by one or more statuses. Each must be one of: 'open', 'in_progress', 'done', 'cancelled'.
+        priority_filter (str, Priority, or list[str|Priority], optional): Filter by one or more priorities. Each must be one of: 'high', 'medium', 'low'.
+        sort_by (str, optional): Field to sort by. Prefix with '-' for descending. Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
+        tag_filter (str or list[str], optional): Filter by one or more tag substrings (AND logic).
+
     Returns:
         dict: {"items": [list_of_items]} on success, or {"error": "message"} on failure.
+
+    Example usage:
+        list_items()  # List open/in_progress items
+        list_items(status_filter="done")
+        list_items(status_filter=["open", "done"])
+        list_items(priority_filter="high")
+        list_items(priority_filter=["high", "medium"])
+        list_items(tag_filter="work")
+        list_items(tag_filter=["work", "urgent"])
+        list_items(sort_by="-priority")
+
+    Valid values:
+        status_filter: 'open', 'in_progress', 'done', 'cancelled'
+        priority_filter: 'high', 'medium', 'low'
+        sort_by: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'
     """
     try:
-        status_enum = parse_status(status_filter)
+        status_enums = parse_status_list(status_filter)
     except ValueError as e:
         return {"error": str(e)}
     try:
-        priority_enum = parse_priority(priority_filter)
+        priority_enums = parse_priority_list(priority_filter)
+    except ValueError as e:
+        return {"error": str(e)}
+    try:
+        tag_list = parse_tag_list(tag_filter)
     except ValueError as e:
         return {"error": str(e)}
     with Session(engine) as session:
         statement = select(Todo)
 
-        if status_enum:
-            statement = statement.where(Todo.status == status_enum)
+        if status_enums:
+            statement = statement.where(col(Todo.status).in_(status_enums))
         elif not show_all_statuses:
             statement = statement.where(col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS]))
 
-        if priority_enum:
-            statement = statement.where(Todo.priority == priority_enum)
+        if priority_enums:
+            statement = statement.where(col(Todo.priority).in_(priority_enums))
 
-        if tag_filter:
-            statement = statement.where(Todo.tags.like(f"%{tag_filter}%"))
+        if tag_list:
+            for tag in tag_list:
+                statement = statement.where(Todo.tags.like(f"%{tag}%"))
 
         valid_sort_fields = ["priority", "due_date", "created_at", "status", "description", "id"]
         if sort_by:
