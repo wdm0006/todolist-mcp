@@ -478,6 +478,190 @@ def remove_item(item_id: int) -> Dict[str, Any]:
         return {"message": f"Removed todo item #{item_id}: '{item_description}'", "id": item_id, "status": "removed"}
 
 
+@mcp_server.tool()
+def assistant_workflow_guide() -> Dict[str, str]:
+    """
+    Returns a comprehensive guide for code assistants on how to use this todo system for long-term project management.
+    
+    Returns:
+        dict: Complete workflow guide with examples and best practices.
+    """
+    guide = """
+# Code Assistant Project Management Workflow Guide
+
+This todo system is designed for long-term project management where each item represents a PR or development task.
+
+## 🚀 Quick Start Workflow
+
+### 1. Adding New PR Tasks
+Always add rich metadata when creating tasks:
+
+```
+add_item(
+    description="Implement OAuth2 authentication with JWT tokens",
+    priority="high",  # high, medium, low
+    due_date_str="2024-03-31",  # YYYY-MM-DD format
+    tags="backend,security,oauth,feature"  # comma-separated
+)
+```
+
+### 2. Grooming Your Backlog
+Regularly review and refine your task list:
+
+```
+# Review all open items
+list_items()
+
+# Update task after discussion/planning
+update_item(
+    item_id=123,
+    description="Implement OAuth2 with PKCE flow and refresh tokens", 
+    priority="high",
+    tags="backend,security,oauth,feature,pkce"
+)
+
+# Remove obsolete tasks
+remove_item(item_id=456)
+
+# Or mark as cancelled to keep history
+update_item(item_id=456, status="cancelled")
+```
+
+### 3. Work Lifecycle (IMPORTANT!)
+Follow this exact sequence:
+
+```
+# 1. Start working on a task
+update_item(item_id=123, status="in_progress")
+
+# 2. Implement your changes using other tools
+# 3. Run the project's test suite (make test, npm test, etc.)
+# 4. ONLY mark done if tests pass!
+mark_item_done(item_id=123)
+
+# If tests fail, keep as in_progress and document issues:
+update_item(
+    item_id=123, 
+    description="OAuth2 implementation (failing: test_token_refresh)"
+)
+```
+
+## 📊 Reporting & Status Tracking
+
+### Status Reports
+```
+list_items(status_filter="open")          # Backlog/todo items
+list_items(status_filter="in_progress")   # Current work
+list_items(status_filter="done")          # Completed PRs
+list_items(show_all_statuses=True)        # Everything
+```
+
+### Priority-Based Planning
+```
+list_items(priority_filter="high", sort_by="due_date")     # Urgent items
+list_items(priority_filter=["high", "medium"])             # Multiple priorities
+```
+
+### Tag-Based Organization
+```
+list_items(tag_filter="backend")           # All backend work
+list_items(tag_filter="security")          # Security-related tasks
+list_items(tag_filter="bugfix")            # All bug fixes
+list_items(tag_filter=["frontend", "ui"])  # Multiple tags (AND logic)
+```
+
+## 🏷️ Recommended Tagging Strategy
+
+Use consistent tags to categorize your work:
+
+**By Type:**
+- `feature` - New functionality
+- `bugfix` - Bug repairs  
+- `enhancement` - Improvements to existing features
+- `refactor` - Code restructuring
+- `docs` - Documentation updates
+- `testing` - Test additions/fixes
+
+**By Component:**
+- `backend`, `frontend`, `api`, `ui`, `database`, `auth`, `payments`
+
+**By Priority Context:**
+- `security`, `performance`, `accessibility`, `breaking-change`
+
+**By Release/Timeline:**
+- `v1.2`, `q1-release`, `hotfix`, `next-sprint`
+
+**By Size (for estimation):**
+- `small`, `medium`, `large`
+
+## 📈 Advanced Usage Patterns
+
+### Sprint Planning
+```
+# Get high-priority items for next sprint
+list_items(
+    priority_filter=["high", "medium"],
+    tag_filter="small", 
+    sort_by="priority"
+)
+```
+
+### Release Management
+```
+# Items for next release
+list_items(tag_filter="v1.2", sort_by="due_date")
+
+# Security items that need immediate attention
+list_items(tag_filter="security", priority_filter="high")
+```
+
+### Progress Tracking
+```
+# Weekly standup report
+list_items(status_filter="done", sort_by="-created_at")      # Recent completions
+list_items(status_filter="in_progress")                     # Current work
+list_items(priority_filter="high", status_filter="open")    # Upcoming priorities
+```
+
+## ⚠️ Important Notes
+
+1. **Testing Integration**: This system cannot run tests directly. Always run your project's test suite manually before marking items as done.
+
+2. **Status Discipline**: Only mark items as "done" when:
+   - Implementation is complete
+   - Tests are passing
+   - Code is ready for PR/merge
+
+3. **Tag Consistency**: Establish and stick to consistent tagging conventions across your project.
+
+4. **Regular Grooming**: Review your backlog regularly to update priorities, refine descriptions, and remove obsolete items.
+
+5. **Due Dates**: Use due dates for release planning and deadline tracking.
+
+## 🔄 Example Daily Workflow
+
+```
+1. Morning standup:
+   - Check: list_items(status_filter="in_progress")
+   - Plan: list_items(priority_filter="high", sort_by="due_date")
+
+2. Start new work:
+   - update_item(item_id=X, status="in_progress")
+
+3. Before completing:
+   - Run tests: make test (or equivalent)
+   - If pass: mark_item_done(item_id=X)
+   - If fail: document issues in description
+
+4. End of day:
+   - Review: list_items(show_all_statuses=True, sort_by="-updated_at")
+```
+
+This system scales from small personal projects to large team initiatives. Use it consistently and it will become an invaluable project management tool!
+"""
+    return {"guide": guide}
+
+
 if __name__ == "__main__":
     if not cli_args.project_dir:
         print("Error: --project-dir is required when running the server directly.", file=sys.stderr)

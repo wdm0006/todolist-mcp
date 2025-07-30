@@ -13,6 +13,7 @@ This server provides the following todo management tools:
 - **`update-item`**: Update fields of an existing todo item (description, status, priority, due date, tags).
 - **`mark-item-done`**: Mark a todo item as done.
 - **`remove-item`**: Remove a todo item from the database.
+- **`assistant-workflow-guide`**: Get a comprehensive workflow guide for code assistants.
 
 ## Installation
 
@@ -81,6 +82,9 @@ You can connect any MCP client (like Claude.ai, Windsurf, or Cursor) to this ser
 **Removing a Todo:**
 - "Remove todo #2." (Calls `remove-item`)
 
+**Getting Help:**
+- "How should I use this todo system for project management?" (Calls `assistant-workflow-guide`)
+
 ## Tool Reference
 
 ---
@@ -139,6 +143,14 @@ You can connect any MCP client (like Claude.ai, Windsurf, or Cursor) to this ser
 - **Parameters**:
     - `item_id` (`int`): ID of the todo item.
 - **Returns**: Message and ID of the removed item, or an error message.
+
+---
+
+**`assistant-workflow-guide`**
+
+- **Description**: Get a comprehensive workflow guide for code assistants using this system for project management.
+- **Parameters**: None.
+- **Returns**: `{"guide": "detailed_workflow_guide"}` with complete usage instructions, examples, and best practices.
 
 ---
 
