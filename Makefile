@@ -6,6 +6,9 @@ setup:
 install:
 	uv pip install -e .[dev]
 
+install-ui:
+	uv pip install -e .[dev,ui]
+
 lint:
 	uv run ruff check --fix .
 

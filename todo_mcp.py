@@ -89,28 +89,36 @@ class Priority(str, enum.Enum):
 PRIORITY_ORDER = {Priority.HIGH: 1, Priority.MEDIUM: 2, Priority.LOW: 3}
 
 
-class Todo(SQLModel, table=True):
-    """
-    SQLModel for a todo item.
-    Attributes:
-        id (int): Primary key.
-        description (str): Description of the todo item.
-        status (Status): Status of the item.
-        priority (Priority): Priority level.
-        created_at (datetime): Creation timestamp.
-        updated_at (datetime): Last update timestamp.
-        due_date (date, optional): Due date.
-        tags (str, optional): Comma-separated tags.
-    """
+# Check if the Todo class already exists to prevent redefinition errors
+if not hasattr(sys.modules.get(__name__), '_TODO_TABLE_DEFINED'):
+    class Todo(SQLModel, table=True, extend_existing=True, sqlite_autoincrement=True):
+        """
+        SQLModel for a todo item.
+        Attributes:
+            id (int): Primary key.
+            description (str): Description of the todo item.
+            status (Status): Status of the item.
+            priority (Priority): Priority level.
+            created_at (datetime): Creation timestamp.
+            updated_at (datetime): Last update timestamp.
+            due_date (date, optional): Due date.
+            tags (str, optional): Comma-separated tags.
+        """
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    description: str = Field(index=True)
-    status: Status = Field(default=Status.OPEN, index=True)
-    priority: Priority = Field(default=Priority.MEDIUM, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    due_date: Optional[date] = Field(default=None, index=True)
-    tags: Optional[str] = Field(default=None, index=True)
+        id: Optional[int] = Field(default=None, primary_key=True)
+        description: str = Field(index=True)
+        status: Status = Field(default=Status.OPEN, index=True)
+        priority: Priority = Field(default=Priority.MEDIUM, index=True)
+        created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+        updated_at: datetime = Field(default_factory=datetime.utcnow)
+        due_date: Optional[date] = Field(default=None, index=True)
+        tags: Optional[str] = Field(default=None, index=True)
+    
+    # Mark that the table has been defined
+    sys.modules[__name__]._TODO_TABLE_DEFINED = True
+else:
+    # If already defined, get the existing class
+    Todo = getattr(sys.modules[__name__], 'Todo', None)
 
 
 def create_db_and_tables():

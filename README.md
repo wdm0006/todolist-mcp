@@ -85,6 +85,54 @@ You can connect any MCP client (like Claude.ai, Windsurf, or Cursor) to this ser
 **Getting Help:**
 - "How should I use this todo system for project management?" (Calls `assistant-workflow-guide`)
 
+## Web Interface
+
+A modern FastAPI + HTMX kanban board interface is provided for human users to visualize and manage the same todo database that AI assistants use.
+
+### Running the Kanban Web UI
+
+The web interface is a self-contained script with embedded dependencies:
+
+```bash
+# Run directly with uv (recommended)
+uv run kanban_web.py --project-dir /path/to/your/project
+
+# Or install web dependencies and run with Python
+pip install -e .[web]
+python kanban_web.py --project-dir /path/to/your/project
+```
+
+The interface will be available at `http://127.0.0.1:8000`
+
+### Example Usage
+
+```bash
+# Run the kanban interface for a specific project
+uv run kanban_web.py --project-dir /Users/yourname/projects/my-app
+
+# Use the same project directory as your MCP server
+uv run kanban_web.py --project-dir /path/to/project
+
+# Custom host and port
+uv run kanban_web.py --project-dir /path/to/project --host 0.0.0.0 --port 3000
+```
+
+### Features
+
+- **🚀 Modern Tech Stack**: FastAPI + HTMX for dynamic updates without full page reloads
+- **🎨 Retro Hacker Theme**: Cyberpunk aesthetic with neon colors, terminal fonts, and glowing effects
+- **📋 Drag & Drop Kanban**: Visual swimlanes with smooth drag-and-drop between statuses
+- **🏷️ Smart Tags**: Colorful, bracketed tags with category-specific styling
+- **✏️ Modal Forms**: Beautiful create/edit modals with terminal-style inputs
+- **⚡ Priority System**: Glowing priority indicators with color coding
+- **🔄 Real-time Updates**: HTMX-powered dynamic updates for seamless interaction
+- **🗑️ Safe Operations**: Delete confirmations and proper error handling
+- **📱 Responsive Design**: Works on desktop, tablet, and mobile devices
+- **⚙️ Single File**: Self-contained with embedded dependencies using uv script format
+- **🎯 No JavaScript Build**: Pure HTML/CSS/JS with CDN dependencies
+
+This provides a perfect complement to AI assistant management - assistants can work programmatically via MCP tools while humans get visual oversight and control through a beautiful, modern web interface.
+
 ## Tool Reference
 
 ---

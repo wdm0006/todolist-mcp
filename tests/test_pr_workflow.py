@@ -1,6 +1,6 @@
 import pytest
-from sqlmodel import SQLModel, Session, create_engine
-from todo_mcp import Todo, Priority, Status, add_item, list_items, update_item, mark_item_done, remove_item, assistant_workflow_guide
+from sqlmodel import SQLModel, create_engine
+from todo_mcp import add_item, list_items, update_item, mark_item_done, remove_item, assistant_workflow_guide
 import tempfile
 import os
 
