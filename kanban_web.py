@@ -33,6 +33,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
 from sqlmodel import SQLModel, Field, create_engine, Session, select
+from sqlalchemy import text
 
 # Enumerations for Todo status and priority
 class Status(str, Enum):
@@ -51,6 +52,7 @@ class Todo(SQLModel, table=True, extend_existing=True):
     """Todo item model"""
     id: Optional[int] = Field(default=None, primary_key=True)
     description: str = Field(index=True)
+    long_description: Optional[str] = Field(default=None)
     status: Status = Field(default=Status.OPEN, index=True)
     priority: Priority = Field(default=Priority.MEDIUM, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -772,6 +774,10 @@ HTML_BASE = """
                     <textarea name="description" class="form-textarea" required placeholder="What needs to be done?"></textarea>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Detailed Description (Optional)</label>
+                    <textarea name="long_description" class="form-textarea" style="min-height: 120px;" placeholder="Additional details, requirements, context, or notes..."></textarea>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Priority</label>
                     <select name="priority" class="form-select">
                         <option value="medium">Medium</option>
@@ -795,6 +801,19 @@ HTML_BASE = """
         </div>
     </div>
     
+    <!-- Detail View Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="color: #00ff41; font-family: 'Orbitron', monospace; margin: 0;">Todo Details</h2>
+                <button type="button" class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
+            </div>
+            <div id="detailContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
     <script>
         // Modal functions
         function showCreateModal() {
@@ -803,6 +822,118 @@ HTML_BASE = """
         
         function hideCreateModal() {
             document.getElementById('createModal').classList.remove('show');
+        }
+        
+        // Detail modal functions
+        function showDetailModal(todoId) {
+            // Prevent event bubbling from card click
+            event.stopPropagation();
+            
+            // Fetch todo details
+            fetch(`/todos/${todoId}/details`)
+                .then(response => response.json())
+                .then(todo => {
+                    populateDetailModal(todo);
+                    document.getElementById('detailModal').classList.add('show');
+                })
+                .catch(error => {
+                    console.error('Failed to fetch todo details:', error);
+                });
+        }
+        
+        function hideDetailModal() {
+            document.getElementById('detailModal').classList.remove('show');
+        }
+        
+        function populateDetailModal(todo) {
+            const priorityColors = {
+                'high': '#ff0040',
+                'medium': '#ffaa00', 
+                'low': '#00ff41'
+            };
+            
+            const statusLabels = {
+                'open': 'Open',
+                'in_progress': 'In Progress',
+                'done': 'Done',
+                'cancelled': 'Cancelled'
+            };
+            
+            const priorityColor = priorityColors[todo.priority] || '#666666';
+            const statusLabel = statusLabels[todo.status] || todo.status;
+            
+            // Build tags HTML
+            let tagsHtml = '';
+            if (todo.tags) {
+                const tags = todo.tags.split(',');
+                const tagElements = tags.map(tag => 
+                    `<span class="tag tag-${tag.trim().toLowerCase()}">${tag.trim()}</span>`
+                ).join('');
+                tagsHtml = `<div style="margin-bottom: 1rem;"><div class="form-label">Tags:</div><div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">${tagElements}</div></div>`;
+            }
+            
+            // Build long description HTML
+            let longDescHtml = '';
+            if (todo.long_description) {
+                longDescHtml = `
+                    <div style="margin-bottom: 1rem;">
+                        <div class="form-label">Detailed Description:</div>
+                        <div style="background: rgba(0, 10, 20, 0.8); border: 2px solid #00ccff; padding: 1rem; color: #00ff41; font-family: 'JetBrains Mono', monospace; line-height: 1.5; white-space: pre-wrap;">${todo.long_description}</div>
+                    </div>
+                `;
+            }
+            
+            // Build due date HTML
+            let dueDateHtml = '';
+            if (todo.due_date) {
+                dueDateHtml = `<div style="margin-bottom: 1rem;"><div class="form-label">Due Date:</div><div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${todo.due_date}</div></div>`;
+            }
+            
+            const content = `
+                <div style="margin-bottom: 1rem;">
+                    <div class="form-label">Task:</div>
+                    <div style="color: #00ff41; font-size: 1.1rem; font-weight: 500; text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${todo.description}</div>
+                </div>
+                
+                ${longDescHtml}
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div>
+                        <div class="form-label">Status:</div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 8px; height: 8px; border-radius: 0; border: 1px solid ${priorityColor}; background: ${priorityColor}; box-shadow: 0 0 5px ${priorityColor};"></div>
+                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">${statusLabel}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-label">Priority:</div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 8px; height: 8px; border-radius: 0; border: 1px solid ${priorityColor}; background: ${priorityColor}; box-shadow: 0 0 5px ${priorityColor};"></div>
+                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">${todo.priority}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${tagsHtml}
+                ${dueDateHtml}
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; color: #666; margin-top: 1.5rem;">
+                    <div>
+                        <div class="form-label">Created:</div>
+                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${new Date(todo.created_at).toLocaleString()}</div>
+                    </div>
+                    <div>
+                        <div class="form-label">Updated:</div>
+                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${new Date(todo.updated_at).toLocaleString()}</div>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 1.5rem; color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                    ID: #${todo.id}
+                </div>
+            `;
+            
+            document.getElementById('detailContent').innerHTML = content;
         }
         
         // Priority filtering function
@@ -882,9 +1013,13 @@ HTML_BASE = """
         
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('createModal');
-            if (event.target == modal) {
+            const createModal = document.getElementById('createModal');
+            const detailModal = document.getElementById('detailModal');
+            
+            if (event.target == createModal) {
                 hideCreateModal();
+            } else if (event.target == detailModal) {
+                hideDetailModal();
             }
         }
     </script>
@@ -939,7 +1074,7 @@ def generate_kanban_html(session: Session) -> str:
                 due_date_html = f'<div class="due-date">Due: {todo.due_date}</div>'
             
             todo_cards += f'''
-            <div class="todo-card priority-{todo.priority}" data-todo-id="{todo.id}">
+            <div class="todo-card priority-{todo.priority}" data-todo-id="{todo.id}" onclick="showDetailModal({todo.id})" style="cursor: pointer;">
                 <div class="card-header">
                     <div class="card-title">{todo.description}</div>
                     <div class="card-id">#{todo.id}</div>
@@ -993,6 +1128,7 @@ async def create_todo(
     priority: Priority = Form(Priority.MEDIUM),
     tags: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
+    long_description: Optional[str] = Form(None),
     session: Session = Depends(get_session)
 ):
     """Create a new todo"""
@@ -1005,6 +1141,7 @@ async def create_todo(
     
     todo = Todo(
         description=description,
+        long_description=long_description if long_description else None,
         priority=priority,
         tags=tags if tags else None,
         due_date=due_date_obj
@@ -1049,6 +1186,74 @@ async def delete_todo(todo_id: int, session: Session = Depends(get_session)):
     # Return updated kanban board HTML
     return generate_kanban_html(session)
 
+@app.get("/todos/{todo_id}/details")
+async def get_todo_details(todo_id: int, session: Session = Depends(get_session)):
+    """Get detailed information about a specific todo"""
+    todo = session.get(Todo, todo_id)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    
+    # Convert to dict with proper date formatting
+    todo_dict = {
+        "id": todo.id,
+        "description": todo.description,
+        "long_description": todo.long_description,
+        "status": todo.status,
+        "priority": todo.priority,
+        "tags": todo.tags,
+        "due_date": todo.due_date.isoformat() if todo.due_date else None,
+        "created_at": todo.created_at.isoformat() if todo.created_at else None,
+        "updated_at": todo.updated_at.isoformat() if todo.updated_at else None
+    }
+    
+    from fastapi.responses import JSONResponse
+    return JSONResponse(todo_dict)
+
+def run_migrations():
+    """
+    Run database migrations to update existing databases with new schema changes.
+    """
+    with Session(engine) as session:
+        # Create schema_version table if it doesn't exist
+        try:
+            session.exec(text("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+            """))
+            session.commit()
+        except Exception as e:
+            print(f"Warning: Could not create schema_version table: {e}")
+        
+        # Check current schema version
+        try:
+            result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
+            current_version = result[0] if result and result[0] is not None else 0
+        except Exception:
+            current_version = 0
+        
+        # Migration 1: Add long_description column
+        if current_version < 1:
+            try:
+                # Check if column already exists (for databases created after this migration was added)
+                session.exec(select(Todo.long_description).limit(1))
+                # Column exists, just update version
+                session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
+                session.commit()
+            except Exception:
+                # Column doesn't exist, add it
+                print("Migration 1: Adding long_description column to existing database...")
+                try:
+                    session.exec(text("ALTER TABLE todo ADD COLUMN long_description TEXT"))
+                    session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
+                    session.commit()
+                    print("Successfully added long_description column")
+                except Exception as e:
+                    print(f"Warning: Could not add long_description column: {e}")
+                    pass
+
+
 def setup_database(project_dir: Optional[str] = None):
     """Set up database connection"""
     global engine
@@ -1068,6 +1273,9 @@ def setup_database(project_dir: Optional[str] = None):
     
     # Create tables
     SQLModel.metadata.create_all(engine)
+    
+    # Run migrations for existing databases
+    run_migrations()
     
     print(f"Database: {database_file}")
     return database_url

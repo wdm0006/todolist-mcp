@@ -15,6 +15,7 @@ import sys
 import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
+from sqlalchemy import text
 from mcp.server.fastmcp import FastMCP
 
 
@@ -96,7 +97,8 @@ if not hasattr(sys.modules.get(__name__), '_TODO_TABLE_DEFINED'):
         SQLModel for a todo item.
         Attributes:
             id (int): Primary key.
-            description (str): Description of the todo item.
+            description (str): Short description of the todo item.
+            long_description (str, optional): Detailed description with additional context.
             status (Status): Status of the item.
             priority (Priority): Priority level.
             created_at (datetime): Creation timestamp.
@@ -107,6 +109,7 @@ if not hasattr(sys.modules.get(__name__), '_TODO_TABLE_DEFINED'):
 
         id: Optional[int] = Field(default=None, primary_key=True)
         description: str = Field(index=True)
+        long_description: Optional[str] = Field(default=None)
         status: Status = Field(default=Status.OPEN, index=True)
         priority: Priority = Field(default=Priority.MEDIUM, index=True)
         created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -121,11 +124,58 @@ else:
     Todo = getattr(sys.modules[__name__], 'Todo', None)
 
 
+def run_migrations():
+    """
+    Run database migrations to update existing databases with new schema changes.
+    """
+    with Session(engine) as session:
+        # Create schema_version table if it doesn't exist
+        try:
+            session.exec(text("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+            """))
+            session.commit()
+        except Exception as e:
+            print(f"Warning: Could not create schema_version table: {e}")
+        
+        # Check current schema version
+        try:
+            result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
+            current_version = result[0] if result and result[0] is not None else 0
+        except Exception:
+            current_version = 0
+        
+        # Migration 1: Add long_description column
+        if current_version < 1:
+            try:
+                # Check if column already exists (for databases created after this migration was added)
+                session.exec(select(Todo.long_description).limit(1))
+                # Column exists, just update version
+                session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
+                session.commit()
+            except Exception:
+                # Column doesn't exist, add it
+                print("Migration 1: Adding long_description column to existing database...")
+                try:
+                    session.exec(text("ALTER TABLE todo ADD COLUMN long_description TEXT"))
+                    session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
+                    session.commit()
+                    print("Successfully added long_description column")
+                except Exception as e:
+                    print(f"Warning: Could not add long_description column: {e}")
+                    pass
+
+
 def create_db_and_tables():
     """
     Create the database and tables if they do not exist.
+    Also run any necessary migrations for existing databases.
     """
     SQLModel.metadata.create_all(engine)
+    run_migrations()
 
 
 def todo_to_dict(todo_item: Todo) -> Dict[str, Any]:
@@ -250,14 +300,16 @@ def add_item(
     priority: str = Priority.MEDIUM,
     due_date_str: Optional[str] = None,
     tags: Optional[str] = None,
+    long_description: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Add a new todo item.
     Args:
-        description (str): Description of the todo item.
+        description (str): Short description of the todo item.
         priority (str, optional): Priority level. Must be one of: 'high', 'medium', 'low'. Defaults to 'medium'.
         due_date_str (str, optional): Due date in YYYY-MM-DD format.
         tags (str, optional): Comma-separated tags.
+        long_description (str, optional): Detailed description with additional context, requirements, or notes.
     Returns:
         dict: The created todo item as a dictionary, or an error message.
     """
@@ -275,6 +327,7 @@ def add_item(
     with Session(engine) as session:
         todo = Todo(
             description=description,
+            long_description=long_description,
             priority=priority_enum,
             due_date=parsed_due_date,
             tags=tags,
@@ -397,16 +450,18 @@ def update_item(
     priority: Optional[str] = None,
     due_date_str: Optional[str] = None,
     tags: Optional[str] = None,
+    long_description: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Update an existing todo item. Only provided fields will be changed.
     Args:
         item_id (int): ID of the todo item to update.
-        description (str, optional): New description.
+        description (str, optional): New short description.
         status (str, optional): New status. Must be one of: 'open', 'in_progress', 'done', 'cancelled'.
         priority (str, optional): New priority. Must be one of: 'high', 'medium', 'low'.
         due_date_str (str, optional): New due date (YYYY-MM-DD) or 'none' to clear.
         tags (str, optional): New tags (comma-separated) or 'none' to clear.
+        long_description (str, optional): New detailed description or 'none' to clear.
     Returns:
         dict: The updated todo item as a dictionary, or an error/message.
     """
@@ -442,6 +497,9 @@ def update_item(
             updated = True
         if tags is not None:
             todo.tags = None if tags.lower() == "none" else tags
+            updated = True
+        if long_description is not None:
+            todo.long_description = None if long_description.lower() == "none" else long_description
             updated = True
 
         if updated:
