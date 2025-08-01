@@ -740,8 +740,19 @@ HTML_BASE = """
     
     <div class="container">
         <div class="controls">
-            <button class="btn" onclick="showCreateModal()">Create New Todo</button>
             <div>
+                <button class="btn" onclick="showCreateModal()">Create New Todo</button>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <div>
+                    <label class="form-label" style="margin-bottom: 0.25rem; font-size: 0.75rem;">Filter by Priority:</label>
+                    <select id="priorityFilter" class="form-select" style="width: 150px; padding: 0.5rem;" onchange="filterByPriority()">
+                        <option value="">All Priorities</option>
+                        <option value="high">🔴 High</option>
+                        <option value="medium">🟡 Medium</option>
+                        <option value="low">🟢 Low</option>
+                    </select>
+                </div>
                 <button class="btn btn-secondary" onclick="location.reload()">Refresh</button>
             </div>
         </div>
@@ -794,6 +805,41 @@ HTML_BASE = """
             document.getElementById('createModal').classList.remove('show');
         }
         
+        // Priority filtering function
+        function filterByPriority() {
+            const selectedPriority = document.getElementById('priorityFilter').value;
+            const todoCards = document.querySelectorAll('.todo-card');
+            
+            todoCards.forEach(card => {
+                if (selectedPriority === '') {
+                    // Show all cards
+                    card.style.display = 'block';
+                } else {
+                    // Check if card has the selected priority class
+                    if (card.classList.contains(`priority-${selectedPriority}`)) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                }
+            });
+            
+            // Update column counts after filtering
+            updateColumnCounts();
+        }
+        
+        // Update column counts based on visible cards
+        function updateColumnCounts() {
+            const columns = document.querySelectorAll('.kanban-column');
+            columns.forEach(column => {
+                const visibleCards = column.querySelectorAll('.todo-card[style*="display: block"], .todo-card:not([style*="display: none"])');
+                const countElement = column.querySelector('.item-count');
+                if (countElement) {
+                    countElement.textContent = visibleCards.length;
+                }
+            });
+        }
+        
         // Initialize sortable columns
         function initializeSortable() {
             const columns = document.querySelectorAll('.todo-list');
@@ -829,6 +875,8 @@ HTML_BASE = """
         document.body.addEventListener('htmx:afterSwap', function(evt) {
             if (evt.target.id === 'kanban-board') {
                 initializeSortable();
+                // Reapply priority filter after content update
+                filterByPriority();
             }
         });
         

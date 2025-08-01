@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["todo_mcp", "kanban_web"]
+py-modules = ["todo_mcp", "kanban_web", "makefile_mcp"]
 
 [project.optional-dependencies]
 dev = [
