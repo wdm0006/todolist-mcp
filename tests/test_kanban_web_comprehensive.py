@@ -24,7 +24,6 @@ import tempfile
 import os
 import pathlib
 from datetime import datetime, date
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine, select
 from bs4 import BeautifulSoup

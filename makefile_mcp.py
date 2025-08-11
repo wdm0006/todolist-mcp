@@ -20,7 +20,7 @@ import pathlib
 import re
 import subprocess
 import sys
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, Optional, Set, Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -52,6 +52,12 @@ def parse_cli_args():
         "--working-dir",
         type=str,
         help="Working directory for make commands (default: directory containing Makefile)"
+    )
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=25000,
+        help="Maximum number of tokens to return from command output (default: 25000)"
     )
 
     known_args, _ = parser.parse_known_args()
@@ -185,14 +191,16 @@ def create_make_tool(target_name: str, description: str):
     
     def make_target(
         additional_args: Optional[str] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
+        max_output_tokens: Optional[int] = None
     ) -> Dict[str, Any]:
-        f"""
-        Execute the '{target_name}' make target.
+        f"""Execute the '{target_name}' make target.
         
         Args:
             additional_args (str, optional): Additional arguments to pass to make.
             dry_run (bool, optional): If True, show what would be executed without running it.
+            max_output_tokens (int, optional): Maximum number of tokens to return from output 
+                (default: {cli_args.max_output_tokens}).
         
         Returns:
             dict: Result of the make command execution.
@@ -216,14 +224,56 @@ def create_make_tool(target_name: str, description: str):
                 timeout=300  # 5 minute timeout
             )
             
+            # Determine token limit
+            token_limit = max_output_tokens if max_output_tokens is not None else cli_args.max_output_tokens
+            
+            # Function to truncate text to approximate token limit
+            def truncate_to_tokens(text: str, max_tokens: int) -> tuple[str, bool]:
+                """Truncate text to approximately max_tokens. Returns (text, was_truncated)."""
+                if not text:
+                    return text, False
+                
+                # Rough approximation: 4 characters per token on average
+                max_chars = max_tokens * 4
+                if len(text) <= max_chars:
+                    return text, False
+                
+                # Truncate and add a note
+                truncated_text = text[:max_chars]
+                # Try to break at a line boundary near the end
+                last_newline = truncated_text.rfind('\n', max(0, max_chars - 100))
+                if last_newline > max_chars // 2:  # Only use line break if it's not too early
+                    truncated_text = truncated_text[:last_newline]
+                
+                return truncated_text, True
+            
+            # Truncate output if needed
+            stdout, stdout_truncated = truncate_to_tokens(result.stdout, token_limit)
+            stderr, stderr_truncated = truncate_to_tokens(result.stderr, token_limit)
+            
             response = {
                 "target": target_name,
                 "command": " ".join(cmd),
                 "working_directory": str(WORKING_DIR),
                 "exit_code": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr
+                "stdout": stdout,
+                "stderr": stderr
             }
+            
+            # Add truncation notes if applicable
+            if stdout_truncated:
+                response["stdout_truncated"] = True
+                response["stdout_truncation_note"] = (
+                    f"Output truncated to ~{token_limit} tokens. "
+                    f"Use max_output_tokens parameter to adjust limit."
+                )
+            
+            if stderr_truncated:
+                response["stderr_truncated"] = True  
+                response["stderr_truncation_note"] = (
+                    f"Error output truncated to ~{token_limit} tokens. "
+                    f"Use max_output_tokens parameter to adjust limit."
+                )
             
             if dry_run:
                 response["note"] = "This was a dry run - no commands were actually executed"
@@ -337,7 +387,7 @@ if __name__ == "__main__":
         print("Error: No make targets available to expose as tools", file=sys.stderr)
         sys.exit(1)
     
-    print(f"Starting Makefile MCP server")
+    print("Starting Makefile MCP server")
     print(f"  Makefile: {MAKEFILE_PATH}")
     print(f"  Working directory: {WORKING_DIR}")
     print(f"  Available targets: {', '.join(filtered_targets.keys())}")
