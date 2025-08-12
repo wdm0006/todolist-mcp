@@ -39,6 +39,7 @@ known-first-party = ["stargazers"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Ignore unused imports in __init__.py files
 "tests/**/*.py" = ["B011", "S101"]  # Ignore assert warnings in test files
+"kanban_web.py" = ["B008"]  # Ignore function call in default arguments for FastAPI dependency injection
 
 [tool.ruff.format]
 quote-style = "double"

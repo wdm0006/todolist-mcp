@@ -29,43 +29,57 @@ from typing import Optional
 from enum import Enum
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
 
-# Enumerations for Todo status and priority
-class Status(str, Enum):
-    OPEN = "open"
-    IN_PROGRESS = "in_progress" 
-    DONE = "done"
-    CANCELLED = "cancelled"
+# Import shared models and migrations from todo_mcp
+try:
+    from todo_mcp import Todo, Status, Priority, run_migrations
+except ImportError:
+    # Fallback definitions if todo_mcp isn't available
 
-class Priority(str, Enum):
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
+    # Enumerations for Todo status and priority
+    class Status(str, Enum):
+        OPEN = "open"
+        IN_PROGRESS = "in_progress"
+        DONE = "done"
+        CANCELLED = "cancelled"
 
-# SQLModel for Todo items
-class Todo(SQLModel, table=True, extend_existing=True):
-    """Todo item model"""
-    id: Optional[int] = Field(default=None, primary_key=True)
-    description: str = Field(index=True)
-    long_description: Optional[str] = Field(default=None)
-    status: Status = Field(default=Status.OPEN, index=True)
-    priority: Priority = Field(default=Priority.MEDIUM, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    due_date: Optional[date] = Field(default=None, index=True)
-    tags: Optional[str] = Field(default=None, index=True)
+    class Priority(str, Enum):
+        HIGH = "high"
+        MEDIUM = "medium"
+        LOW = "low"
+
+    # SQLModel for Todo items
+    class Todo(SQLModel, table=True, extend_existing=True):
+        """Todo item model"""
+
+        id: Optional[int] = Field(default=None, primary_key=True)
+        description: str = Field(index=True)
+        long_description: Optional[str] = Field(default=None)
+        status: Status = Field(default=Status.OPEN, index=True)
+        priority: Priority = Field(default=Priority.MEDIUM, index=True)
+        created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+        updated_at: datetime = Field(default_factory=datetime.utcnow)
+        due_date: Optional[date] = Field(default=None, index=True)
+        tags: Optional[str] = Field(default=None, index=True)
+
+    def run_migrations():
+        """Placeholder migration function"""
+        pass
+
 
 # Global database engine
 engine = None
+
 
 def get_session():
     """Dependency to get database session"""
     with Session(engine) as session:
         yield session
+
 
 # FastAPI app
 app = FastAPI(title="Todo Kanban Board", description="Modern kanban interface for todo management")
@@ -746,8 +760,11 @@ HTML_BASE = """
             </div>
             <div style="display: flex; gap: 1rem; align-items: center;">
                 <div>
-                    <label class="form-label" style="margin-bottom: 0.25rem; font-size: 0.75rem;">Filter by Priority:</label>
-                    <select id="priorityFilter" class="form-select" style="width: 150px; padding: 0.5rem;" onchange="filterByPriority()">
+                    <label class="form-label" style="margin-bottom: 0.25rem; font-size: 0.75rem;">
+                        Filter by Priority:
+                    </label>
+                    <select id="priorityFilter" class="form-select" 
+                            style="width: 150px; padding: 0.5rem;" onchange="filterByPriority()">
                         <option value="">All Priorities</option>
                         <option value="high">🔴 High</option>
                         <option value="medium">🟡 Medium</option>
@@ -770,11 +787,14 @@ HTML_BASE = """
             <form hx-post="/todos" hx-target="#kanban-board" hx-swap="innerHTML">
                 <div class="form-group">
                     <label class="form-label">Description</label>
-                    <textarea name="description" class="form-textarea" required placeholder="What needs to be done?"></textarea>
+                    <textarea name="description" class="form-textarea" required 
+                              placeholder="What needs to be done?"></textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Detailed Description (Optional)</label>
-                    <textarea name="long_description" class="form-textarea" style="min-height: 120px;" placeholder="Additional details, requirements, context, or notes..."></textarea>
+                    <textarea name="long_description" class="form-textarea" 
+                              style="min-height: 120px;" 
+                              placeholder="Additional details, requirements, context, or notes..."></textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Priority</label>
@@ -868,7 +888,10 @@ HTML_BASE = """
                 const tagElements = tags.map(tag => 
                     `<span class="tag tag-${tag.trim().toLowerCase()}">${tag.trim()}</span>`
                 ).join('');
-                tagsHtml = `<div style="margin-bottom: 1rem;"><div class="form-label">Tags:</div><div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">${tagElements}</div></div>`;
+                tagsHtml = `<div style="margin-bottom: 1rem;">
+                    <div class="form-label">Tags:</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">${tagElements}</div>
+                </div>`;
             }
             
             // Build long description HTML
@@ -877,7 +900,9 @@ HTML_BASE = """
                 longDescHtml = `
                     <div style="margin-bottom: 1rem;">
                         <div class="form-label">Detailed Description:</div>
-                        <div style="background: rgba(0, 10, 20, 0.8); border: 2px solid #00ccff; padding: 1rem; color: #00ff41; font-family: 'JetBrains Mono', monospace; line-height: 1.5; white-space: pre-wrap;">${todo.long_description}</div>
+                        <div style="background: rgba(0, 10, 20, 0.8); border: 2px solid #00ccff; 
+                                     padding: 1rem; color: #00ff41; font-family: 'JetBrains Mono', monospace; 
+                                     line-height: 1.5; white-space: pre-wrap;">${todo.long_description}</div>
                     </div>
                 `;
             }
@@ -885,13 +910,17 @@ HTML_BASE = """
             // Build due date HTML
             let dueDateHtml = '';
             if (todo.due_date) {
-                dueDateHtml = `<div style="margin-bottom: 1rem;"><div class="form-label">Due Date:</div><div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${todo.due_date}</div></div>`;
+                dueDateHtml = `<div style="margin-bottom: 1rem;">
+                    <div class="form-label">Due Date:</div>
+                    <div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${todo.due_date}</div>
+                </div>`;
             }
             
             const content = `
                 <div style="margin-bottom: 1rem;">
                     <div class="form-label">Task:</div>
-                    <div style="color: #00ff41; font-size: 1.1rem; font-weight: 500; text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${todo.description}</div>
+                    <div style="color: #00ff41; font-size: 1.1rem; font-weight: 500; 
+                                 text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${todo.description}</div>
                 </div>
                 
                 ${longDescHtml}
@@ -900,15 +929,21 @@ HTML_BASE = """
                     <div>
                         <div class="form-label">Status:</div>
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <div style="width: 8px; height: 8px; border-radius: 0; border: 1px solid ${priorityColor}; background: ${priorityColor}; box-shadow: 0 0 5px ${priorityColor};"></div>
-                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">${statusLabel}</span>
+                            <div style="width: 8px; height: 8px; border-radius: 0; 
+                                         border: 1px solid ${priorityColor}; background: ${priorityColor}; 
+                                         box-shadow: 0 0 5px ${priorityColor};"></div>
+                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
+                                          text-transform: uppercase;">${statusLabel}</span>
                         </div>
                     </div>
                     <div>
                         <div class="form-label">Priority:</div>
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <div style="width: 8px; height: 8px; border-radius: 0; border: 1px solid ${priorityColor}; background: ${priorityColor}; box-shadow: 0 0 5px ${priorityColor};"></div>
-                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">${todo.priority}</span>
+                            <div style="width: 8px; height: 8px; border-radius: 0; 
+                                         border: 1px solid ${priorityColor}; background: ${priorityColor}; 
+                                         box-shadow: 0 0 5px ${priorityColor};"></div>
+                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
+                                          text-transform: uppercase;">${todo.priority}</span>
                         </div>
                     </div>
                 </div>
@@ -916,18 +951,24 @@ HTML_BASE = """
                 ${tagsHtml}
                 ${dueDateHtml}
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; color: #666; margin-top: 1.5rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; 
+                             font-size: 0.875rem; color: #666; margin-top: 1.5rem;">
                     <div>
                         <div class="form-label">Created:</div>
-                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${new Date(todo.created_at).toLocaleString()}</div>
+                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
+                                     font-size: 0.8rem;">${new Date(todo.created_at).toLocaleString()}</div>
                     </div>
                     <div>
                         <div class="form-label">Updated:</div>
-                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${new Date(todo.updated_at).toLocaleString()}</div>
+                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
+                                     font-size: 0.8rem;">
+                            ${new Date(todo.updated_at).toLocaleString()}
+                        </div>
                     </div>
                 </div>
                 
-                <div style="text-align: center; margin-top: 1.5rem; color: #00ccff; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                <div style="text-align: center; margin-top: 1.5rem; color: #00ccff; 
+                             font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
                     ID: #${todo.id}
                 </div>
             `;
@@ -962,7 +1003,9 @@ HTML_BASE = """
         function updateColumnCounts() {
             const columns = document.querySelectorAll('.kanban-column');
             columns.forEach(column => {
-                const visibleCards = column.querySelectorAll('.todo-card[style*="display: block"], .todo-card:not([style*="display: none"])');
+                const visibleCards = column.querySelectorAll(
+                    '.todo-card[style*="display: block"], .todo-card:not([style*="display: none"])'
+                );
                 const countElement = column.querySelector('.item-count');
                 if (countElement) {
                     countElement.textContent = visibleCards.length;
@@ -1026,29 +1069,25 @@ HTML_BASE = """
 </html>
 """
 
+
 def generate_kanban_html(session: Session) -> str:
     """Generate kanban board HTML"""
     todos = session.exec(select(Todo)).all()
-    
+
     # Group todos by status
-    todos_by_status = {
-        Status.OPEN: [],
-        Status.IN_PROGRESS: [],
-        Status.DONE: [],
-        Status.CANCELLED: []
-    }
-    
+    todos_by_status = {Status.OPEN: [], Status.IN_PROGRESS: [], Status.DONE: [], Status.CANCELLED: []}
+
     for todo in todos:
         todos_by_status[todo.status].append(todo)
-    
+
     # Generate kanban columns HTML
     status_config = {
         Status.OPEN: {"title": "To Do", "class": "open"},
         Status.IN_PROGRESS: {"title": "In Progress", "class": "in-progress"},
         Status.DONE: {"title": "Done", "class": "done"},
-        Status.CANCELLED: {"title": "Cancelled", "class": "cancelled"}
+        Status.CANCELLED: {"title": "Cancelled", "class": "cancelled"},
     }
-    
+
     kanban_html = ""
     for status, config in status_config.items():
         todo_cards = ""
@@ -1058,22 +1097,38 @@ def generate_kanban_html(session: Session) -> str:
                 tags = [tag.strip() for tag in todo.tags.split(",")]
                 tag_elements = []
                 for tag in tags[:5]:
-                    tag_class = f"tag-{tag.lower()}" if tag.lower() in [
-                        'backend', 'frontend', 'security', 'feature', 'bugfix', 
-                        'enhancement', 'testing', 'docs', 'api', 'ui', 'database', 
-                        'performance', 'refactor'
-                    ] else ""
+                    tag_class = (
+                        f"tag-{tag.lower()}"
+                        if tag.lower()
+                        in [
+                            "backend",
+                            "frontend",
+                            "security",
+                            "feature",
+                            "bugfix",
+                            "enhancement",
+                            "testing",
+                            "docs",
+                            "api",
+                            "ui",
+                            "database",
+                            "performance",
+                            "refactor",
+                        ]
+                        else ""
+                    )
                     tag_elements.append(f'<span class="tag {tag_class}">{tag}</span>')
                 if len(tags) > 5:
-                    tag_elements.append(f'<span class="tag">+{len(tags)-5}</span>')
+                    tag_elements.append(f'<span class="tag">+{len(tags) - 5}</span>')
                 tags_html = f'<div class="card-tags">{"".join(tag_elements)}</div>'
-            
+
             due_date_html = ""
             if todo.due_date:
                 due_date_html = f'<div class="due-date">Due: {todo.due_date}</div>'
-            
+
             todo_cards += f'''
-            <div class="todo-card priority-{todo.priority}" data-todo-id="{todo.id}" onclick="showDetailModal({todo.id})" style="cursor: pointer;">
+            <div class="todo-card priority-{todo.priority}" data-todo-id="{todo.id}" 
+                 onclick="showDetailModal({todo.id})" style="cursor: pointer;">
                 <div class="card-header">
                     <div class="card-title">{todo.description}</div>
                     <div class="card-id">#{todo.id}</div>
@@ -1086,12 +1141,14 @@ def generate_kanban_html(session: Session) -> str:
                         <span>{todo.priority.title()} Priority</span>
                     </div>
                     <div class="card-actions">
-                        <button class="btn btn-sm" hx-delete="/todos/{todo.id}" hx-target="#kanban-board" hx-swap="innerHTML" hx-confirm="Delete this todo?">Delete</button>
+                        <button class="btn btn-sm" hx-delete="/todos/{todo.id}" 
+                                hx-target="#kanban-board" hx-swap="innerHTML" 
+                                hx-confirm="Delete this todo?">Delete</button>
                     </div>
                 </div>
             </div>
             '''
-        
+
         kanban_html += f'''
         <div class="kanban-column">
             <div class="column-header">
@@ -1103,23 +1160,27 @@ def generate_kanban_html(session: Session) -> str:
             </div>
         </div>
         '''
-    
+
     return kanban_html
+
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, session: Session = Depends(get_session)):
     """Main kanban board page"""
     kanban_html = generate_kanban_html(session)
-    
+
     # Use Jinja2 to render template
     from jinja2 import Template
+
     template = Template(HTML_BASE)
     return template.render(kanban_content=kanban_html)
+
 
 @app.get("/kanban-board", response_class=HTMLResponse)
 async def get_kanban_board(session: Session = Depends(get_session)):
     """Get just the kanban board HTML for HTMX updates"""
     return generate_kanban_html(session)
+
 
 @app.post("/todos")
 async def create_todo(
@@ -1128,7 +1189,7 @@ async def create_todo(
     tags: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     long_description: Optional[str] = Form(None),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
 ):
     """Create a new todo"""
     due_date_obj = None
@@ -1137,40 +1198,39 @@ async def create_todo(
             due_date_obj = datetime.strptime(due_date, "%Y-%m-%d").date()
         except ValueError:
             pass
-    
+
     todo = Todo(
         description=description,
         long_description=long_description if long_description else None,
         priority=priority,
         tags=tags if tags else None,
-        due_date=due_date_obj
+        due_date=due_date_obj,
     )
-    
+
     session.add(todo)
     session.commit()
-    
-    # Return updated kanban board HTML
-    return generate_kanban_html(session)
+
+    # Return redirect to main page after successful creation
+    return RedirectResponse(url="/", status_code=303)
+
 
 @app.put("/todos/{todo_id}/status")
-async def update_todo_status(
-    todo_id: int,
-    status: Status = Form(...),
-    session: Session = Depends(get_session)
-):
+async def update_todo_status(todo_id: int, status: Status = Form(...), session: Session = Depends(get_session)):
     """Update todo status (for drag and drop)"""
     todo = session.get(Todo, todo_id)
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
-    
+
     todo.status = status
     todo.updated_at = datetime.utcnow()
     session.add(todo)
     session.commit()
-    
+
     # Return just a success response - the frontend will handle the UI update
     from fastapi.responses import JSONResponse
+
     return JSONResponse({"success": True})
+
 
 @app.delete("/todos/{todo_id}")
 async def delete_todo(todo_id: int, session: Session = Depends(get_session)):
@@ -1178,12 +1238,13 @@ async def delete_todo(todo_id: int, session: Session = Depends(get_session)):
     todo = session.get(Todo, todo_id)
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
-    
+
     session.delete(todo)
     session.commit()
-    
-    # Return updated kanban board HTML
-    return generate_kanban_html(session)
+
+    # Return redirect to main page after successful deletion
+    return RedirectResponse(url="/", status_code=303)
+
 
 @app.get("/todos/{todo_id}/details")
 async def get_todo_details(todo_id: int, session: Session = Depends(get_session)):
@@ -1191,7 +1252,7 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
     todo = session.get(Todo, todo_id)
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
-    
+
     # Convert to dict with proper date formatting
     todo_dict = {
         "id": todo.id,
@@ -1202,11 +1263,13 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
         "tags": todo.tags,
         "due_date": todo.due_date.isoformat() if todo.due_date else None,
         "created_at": todo.created_at.isoformat() if todo.created_at else None,
-        "updated_at": todo.updated_at.isoformat() if todo.updated_at else None
+        "updated_at": todo.updated_at.isoformat() if todo.updated_at else None,
     }
-    
+
     from fastapi.responses import JSONResponse
+
     return JSONResponse(todo_dict)
+
 
 def run_migrations():
     """
@@ -1215,23 +1278,25 @@ def run_migrations():
     with Session(engine) as session:
         # Create schema_version table if it doesn't exist
         try:
-            session.exec(text("""
+            session.exec(
+                text("""
                 CREATE TABLE IF NOT EXISTS schema_version (
                     version INTEGER PRIMARY KEY,
                     applied_at TEXT NOT NULL
                 )
-            """))
+            """)
+            )
             session.commit()
         except Exception as e:
             print(f"Warning: Could not create schema_version table: {e}")
-        
+
         # Check current schema version
         try:
             result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
             current_version = result[0] if result and result[0] is not None else 0
         except Exception:
             current_version = 0
-        
+
         # Migration 1: Add long_description column
         if current_version < 1:
             try:
@@ -1256,7 +1321,7 @@ def run_migrations():
 def setup_database(project_dir: Optional[str] = None):
     """Set up database connection"""
     global engine
-    
+
     if project_dir:
         project_dir_path = pathlib.Path(project_dir).resolve()
         if not project_dir_path.is_dir():
@@ -1266,55 +1331,38 @@ def setup_database(project_dir: Optional[str] = None):
     else:
         print("Warning: --project-dir not specified. Using current directory.")
         database_file = pathlib.Path.cwd() / "todo.db"
-    
+
     database_url = f"sqlite:///{database_file.resolve()}"
     engine = create_engine(database_url)
-    
+
     # Create tables
     SQLModel.metadata.create_all(engine)
-    
+
     # Run migrations for existing databases
     run_migrations()
-    
+
     print(f"Database: {database_file}")
     return database_url
+
 
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Todo Kanban Web Interface")
-    parser.add_argument(
-        "--project-dir",
-        type=str,
-        help="Project directory containing todo.db"
-    )
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="Host to bind to (default: 127.0.0.1)"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)"
-    )
-    
+    parser.add_argument("--project-dir", type=str, help="Project directory containing todo.db")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
+
     args = parser.parse_args()
-    
+
     # Setup database
     setup_database(args.project_dir)
-    
+
     print(f"🚀 Starting Todo Kanban Board at http://{args.host}:{args.port}")
     print("   Press Ctrl+C to stop")
-    
+
     # Run the server
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level="info"
-    )
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
 
 if __name__ == "__main__":
     main()
