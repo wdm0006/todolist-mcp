@@ -511,6 +511,10 @@ def update_item(
 ) -> Dict[str, Any]:
     """
     Update an existing todo item. Only provided fields will be changed.
+
+    Only ever update an item to status of done if ALL of the tests for the project are passing. Please have a QA Engineer
+    validate the quality of the work before marking the item closed.
+
     Args:
         item_id (int): ID of the todo item to update.
         description (str, optional): New short description.
@@ -573,6 +577,10 @@ def update_item(
 def mark_item_done(item_id: int) -> Dict[str, Any]:
     """
     Mark a todo item as DONE.
+
+    Only ever update an item to status of done if ALL of the tests for the project are passing. Please have a QA Engineer
+    validate the quality of the work before marking the item closed.
+
     Args:
         item_id (int): ID of the todo item to mark as done.
     Returns:
