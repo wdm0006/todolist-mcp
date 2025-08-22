@@ -1,4 +1,4 @@
-# MCP Servers Collection
+# Todolist and Makefile MCPs
 
 This repository contains Model Context Protocol (MCP) servers designed for AI-powered development workflows. These servers enable specialized AI subagents to manage different aspects of software development through standardized protocols.
 

@@ -394,15 +394,35 @@ def add_item(
 
 
 @mcp_server.tool()
+def get_item_by_id(item_id: int) -> Dict[str, Any]:
+    """
+    Get a specific todo item by its ID.
+
+    Args:
+        item_id (int): ID of the todo item to retrieve.
+
+    Returns:
+        dict: The todo item as a dictionary, or an error message if not found.
+    """
+    with Session(engine) as session:
+        todo = session.get(Todo, item_id)
+        if not todo:
+            return {"error": f"Todo item with ID {item_id} not found."}
+        return todo_to_dict(todo)
+
+
+@mcp_server.tool()
 def list_items(
     show_all_statuses: bool = False,
     status_filter: Optional[Union[str, Status, list[Union[str, Status]]]] = None,
     priority_filter: Optional[Union[str, Priority, list[Union[str, Priority]]]] = None,
     sort_by: Optional[str] = None,
     tag_filter: Optional[Union[str, list[str]]] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    List todo items with optional filters and sorting.
+    List todo items with optional filters, sorting, and pagination.
 
     Args:
         show_all_statuses (bool, optional): If True, show all statuses. Defaults to False.
@@ -413,9 +433,12 @@ def list_items(
         sort_by (str, optional): Field to sort by. Prefix with '-' for descending.
             Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
         tag_filter (str or list[str], optional): Filter by one or more tag substrings (AND logic).
+        limit (int, optional): Maximum number of items to return. Useful for pagination.
+        offset (int, optional): Number of items to skip. Use with limit for pagination.
 
     Returns:
-        dict: {"items": [list_of_items]} on success, or {"error": "message"} on failure.
+        dict: {"items": [list_of_items], "total_count": int} on success, or {"error": "message"} on failure.
+        When pagination is used, total_count shows total items before limit/offset are applied.
 
     Example usage:
         list_items()  # List open/in_progress items
@@ -426,6 +449,8 @@ def list_items(
         list_items(tag_filter="work")
         list_items(tag_filter=["work", "urgent"])
         list_items(sort_by="-priority")
+        list_items(limit=10, offset=20)  # Get items 21-30
+        list_items(limit=5)  # Get first 5 items
 
     Valid values:
         status_filter: 'open', 'in_progress', 'done', 'cancelled'
@@ -478,6 +503,15 @@ def list_items(
         else:
             statement = statement.order_by(Todo.due_date.asc(), Todo.created_at.asc())
 
+        # Get total count before pagination for metadata
+        total_count = len(session.exec(statement).all())
+        
+        # Apply database-level pagination for efficiency if limit/offset specified
+        if limit is not None:
+            statement = statement.limit(limit)
+        if offset is not None:
+            statement = statement.offset(offset)
+            
         results = session.exec(statement).all()
 
         def sort_key(item: Todo):
@@ -487,16 +521,71 @@ def list_items(
                 item.created_at,
             )
 
+        # For priority sorting, we need to sort the results manually
         if sort_by:
             descending_sort = sort_by.startswith("-")
             actual_sort_field = sort_by[1:] if descending_sort else sort_by
             if actual_sort_field == "priority":
-                results = sorted(results, key=sort_key, reverse=descending_sort)
+                # Need to get all results for sorting, then apply pagination
+                if limit is not None or offset is not None:
+                    # Re-execute without pagination for proper sorting
+                    statement_for_sort = select(Todo)
+                    if status_enums:
+                        statement_for_sort = statement_for_sort.where(col(Todo.status).in_(status_enums))
+                    elif not show_all_statuses:
+                        statement_for_sort = statement_for_sort.where(
+                            col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS])
+                        )
+                    if priority_enums:
+                        statement_for_sort = statement_for_sort.where(col(Todo.priority).in_(priority_enums))
+                    if tag_list:
+                        for tag in tag_list:
+                            statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
+                    
+                    all_results = session.exec(statement_for_sort).all()
+                    sorted_results = sorted(all_results, key=sort_key, reverse=descending_sort)
+                    
+                    # Apply manual pagination after sorting
+                    start = offset or 0
+                    end = start + limit if limit else len(sorted_results)
+                    results = sorted_results[start:end]
+                else:
+                    results = sorted(results, key=sort_key, reverse=descending_sort)
         else:
-            results = sorted(results, key=sort_key)
+            # Default sorting by priority, due_date, created_at
+            if limit is not None or offset is not None:
+                # Re-execute without pagination for proper sorting  
+                statement_for_sort = select(Todo)
+                if status_enums:
+                    statement_for_sort = statement_for_sort.where(col(Todo.status).in_(status_enums))
+                elif not show_all_statuses:
+                    statement_for_sort = statement_for_sort.where(
+                        col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS])
+                    )
+                if priority_enums:
+                    statement_for_sort = statement_for_sort.where(col(Todo.priority).in_(priority_enums))
+                if tag_list:
+                    for tag in tag_list:
+                        statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
+                
+                all_results = session.exec(statement_for_sort).all()
+                sorted_results = sorted(all_results, key=sort_key)
+                
+                # Apply manual pagination after sorting
+                start = offset or 0
+                end = start + limit if limit else len(sorted_results)
+                results = sorted_results[start:end]
+            else:
+                results = sorted(results, key=sort_key)
 
         processed_results = [todo_to_dict(item) for item in results]
-        return {"items": processed_results}
+        
+        # Include total_count in response for pagination metadata
+        response = {"items": processed_results}
+        if limit is not None or offset is not None:
+            response["total_count"] = total_count
+        
+        return response
 
 
 @mcp_server.tool()
@@ -512,8 +601,8 @@ def update_item(
     """
     Update an existing todo item. Only provided fields will be changed.
 
-    Only ever update an item to status of done if ALL of the tests for the project are passing. Please have a QA Engineer
-    validate the quality of the work before marking the item closed.
+    Only ever update an item to status of done if ALL of the tests for the project are passing.
+    Please have a QA Engineer validate the quality of the work before marking the item closed.
 
     Args:
         item_id (int): ID of the todo item to update.
@@ -578,8 +667,8 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
     """
     Mark a todo item as DONE.
 
-    Only ever update an item to status of done if ALL of the tests for the project are passing. Please have a QA Engineer
-    validate the quality of the work before marking the item closed.
+    Only ever update an item to status of done if ALL of the tests for the project are passing.
+    Please have a QA Engineer validate the quality of the work before marking the item closed.
 
     Args:
         item_id (int): ID of the todo item to mark as done.
@@ -993,6 +1082,18 @@ update_item(
 )
 ```
 
+## 🔍 Retrieving Specific Items
+
+For very large kanbans where list output becomes overwhelming, you can retrieve individual tickets:
+
+```
+# Get complete details for a specific ticket number
+get_item_by_id(item_id=81)
+
+# Returns all fields: description, status, priority, dates, tags, etc.
+# Useful when agents need to examine specific tickets without parsing large lists
+```
+
 ## 📊 Reporting & Status Tracking
 
 ### Status Reports
@@ -1001,6 +1102,14 @@ list_items(status_filter="open")          # Backlog/todo items
 list_items(status_filter="in_progress")   # Current work
 list_items(status_filter="done")          # Completed PRs
 list_items(show_all_statuses=True)        # Everything
+
+# For large kanbans, use pagination to manage output
+list_items(limit=10)                       # First 10 items
+list_items(limit=10, offset=20)           # Items 21-30
+list_items(status_filter="done", limit=5) # Last 5 completed items
+
+# Get specific item details by ticket number
+get_item_by_id(item_id=81)                # Get details for ticket #81
 ```
 
 ### Priority-Based Planning
