@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 uv.lock
+todo.db
+macos-app/
 # C extensions
 *.so
 .idea/

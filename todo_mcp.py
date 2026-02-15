@@ -2,7 +2,7 @@
 # /// script
 # dependencies = [
 #   "sqlmodel>=0.0.14,<0.1.0",
-#   "mcp[cli]>=1.7.0,<2.0.0"
+#   "fastmcp>=2.14.0,<3.0.0"
 # ]
 # ///
 
@@ -16,7 +16,7 @@ import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
 from sqlalchemy import text
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 
 # --- Argument Parsing for Project Directory ---

@@ -1,62 +1,10 @@
-# Todolist and Makefile MCPs
+# Todolist MCP
 
-This repository contains Model Context Protocol (MCP) servers designed for AI-powered development workflows. These servers enable specialized AI subagents to manage different aspects of software development through standardized protocols.
+A Model Context Protocol (MCP) server for managing a todo list backed by SQLite. Enables AI assistants to interact with a persistent, queryable todo list for project management and task tracking.
 
-## AI Coding Workflow Integration
+## Features
 
-In modern AI coding workflows, different specialized subagents handle specific responsibilities:
-
-**🎯 Project Manager Subagent** uses the **Todo List MCP Server** to:
-- Track long-term project tasks and milestones
-- Manage task priorities and deadlines
-- Monitor development progress across features
-- Coordinate work between different development phases
-
-**🔬 QA Subagent** uses the **Makefile MCP Server** to:
-- Run test suites consistently before task completion
-- Execute linting and code quality checks
-- Perform build verification and deployment steps
-- Ensure code standards are met before sign-off
-
-This separation of concerns allows each subagent to specialize in their domain while maintaining a coordinated development process. The Project Manager can create and track tasks, while the QA subagent ensures quality gates are met before the Project Manager marks tasks as complete.
-
-### Example Workflow
-
-1. **Project Manager** creates a new feature task:
-   ```
-   "Add OAuth2 authentication with JWT tokens, high priority, due March 31st, tags: backend,security,feature"
-   ```
-
-2. **Developer** implements the feature and updates status:
-   ```
-   "Update task #123 to in_progress status"
-   ```
-
-3. **QA Subagent** runs quality checks before completion:
-   ```
-   "Run the test suite" → executes make_test
-   "Run linting checks" → executes make_lint  
-   "Check code formatting" → executes make_format
-   ```
-
-4. **Project Manager** marks task complete only after QA approval:
-   ```
-   "Mark task #123 as done" → only after all tests pass
-   ```
-
-This ensures consistent quality gates and prevents incomplete work from being marked as finished.
-
-## Available Servers
-
-### 1. Todo List MCP Server (`todo_mcp.py`)
-A todo list management server backed by SQLite. Enables AI assistants to interact with a persistent, queryable todo list for project management and task tracking. Perfect for project manager subagents to maintain oversight of development workflows.
-
-### 2. Makefile MCP Server (`makefile_mcp.py`) 
-A server that exposes Makefile targets as executable tools. AI assistants can discover and execute make targets, with support for filtering which targets are available. Ideal for QA subagents to consistently run test suites, linting, and build processes.
-
-## Todo List MCP Server Features
-
-The todo server provides the following tools:
+The server provides the following tools:
 
 - **`add-item`**: Add a new todo item with description, priority, due date, and tags.
 - **`list-items`**: List todo items, with optional filters for status, priority, tags, and sorting.
@@ -65,38 +13,14 @@ The todo server provides the following tools:
 - **`remove-item`**: Remove a todo item from the database.
 - **`assistant-workflow-guide`**: Get a comprehensive workflow guide for code assistants.
 
-## Makefile MCP Server Features
-
-The makefile server provides the following tools:
-
-- **Dynamic Make Target Tools**: Each Makefile target becomes an executable tool (e.g., `make_build`, `make_test`, `make_clean`)
-- **`list-available-targets`**: List all available make targets exposed by the server
-- **`get-makefile-info`**: Get detailed information about the Makefile and filtering configuration
-
-**Key Features:**
-- **Target Discovery**: Automatically parses Makefiles to discover targets and descriptions
-- **Comment-based Descriptions**: Uses comments above targets as tool descriptions
-- **Include/Exclude Filtering**: Filter which targets are exposed as tools via command-line flags
-- **Dry Run Support**: Execute targets with `--dry-run` to see what would be executed
-- **Additional Arguments**: Pass extra arguments to make commands
-- **Error Handling**: Comprehensive error reporting for failed executions
-- **Working Directory Control**: Execute make commands in the correct directory
-
 ## Installation
 
-These servers are packaged as Python scripts with embedded dependency management using `/// script`.
+Requires Python 3.10+ and `uv`.
 
-1. **Prerequisites**:
-    - Python 3.10 or higher.
-    - `uv` (recommended) or `pip` for dependency management.
+1. **Dependencies**: The script will install these automatically if run with `uv`:
+    - `sqlmodel` and `fastmcp`
 
-2. **Dependencies**: The scripts will install these automatically if run with `uv`:
-    - `sqlmodel` and `mcp[cli]` for the todo server
-    - `mcp[cli]` for the makefile server
-
-## Running the Servers
-
-### Todo List MCP Server
+## Running the Server
 
 You must specify a project directory for the SQLite database using `--project-dir`:
 
@@ -104,32 +28,8 @@ You must specify a project directory for the SQLite database using `--project-di
 uv run todo_mcp.py --project-dir /path/to/your/project
 ```
 
-### Makefile MCP Server
-
-```bash
-# Use default Makefile in current directory
-uv run makefile_mcp.py
-
-# Use specific Makefile
-uv run makefile_mcp.py --makefile /path/to/Makefile
-
-# Include only specific targets
-uv run makefile_mcp.py --include build,test,clean
-
-# Exclude specific targets  
-uv run makefile_mcp.py --exclude deploy,publish
-
-# Custom working directory
-uv run makefile_mcp.py --working-dir /path/to/project
-```
-
 ## MCP Client Configuration
 
-### For AI Subagent Workflows
-
-Configure different MCP servers for specialized subagents:
-
-**Project Manager Subagent** - Gets access to todo management:
 ```json
 {
   "mcpServers": {
@@ -139,48 +39,6 @@ Configure different MCP servers for specialized subagents:
         "--directory", "/path/to/this/repo",
         "run", "todo_mcp.py",
         "--project-dir", "/path/to/your/project"
-      ]
-    }
-  }
-}
-```
-
-**QA Subagent** - Gets access to build and test tools:
-```json
-{
-  "mcpServers": {
-    "makefile": {
-      "command": "uv", 
-      "args": [
-        "--directory", "/path/to/this/repo",
-        "run", "makefile_mcp.py",
-        "--makefile", "/path/to/your/project/Makefile",
-        "--exclude", "deploy,publish"
-      ]
-    }
-  }
-}
-```
-
-**Combined Configuration** - For single agents with both responsibilities:
-```json
-{
-  "mcpServers": {
-    "todolist": {
-      "command": "uv",
-      "args": [
-        "--directory", "/path/to/this/repo",
-        "run", "todo_mcp.py",
-        "--project-dir", "/path/to/your/project"
-      ]
-    },
-    "makefile": {
-      "command": "uv", 
-      "args": [
-        "--directory", "/path/to/this/repo",
-        "run", "makefile_mcp.py",
-        "--makefile", "/path/to/your/project/Makefile",
-        "--exclude", "deploy,publish"
       ]
     }
   }
@@ -211,22 +69,6 @@ You can connect any MCP client (like Claude.ai, Windsurf, or Cursor) to these se
 
 **Getting Help:**
 - "How should I use this todo system for project management?" (Calls `assistant-workflow-guide`)
-
-### Makefile Examples
-
-**Discovering Available Targets:**
-- "What make targets are available?" (Calls `list-available-targets`)
-- "Show me information about the Makefile." (Calls `get-makefile-info`)
-
-**Running Make Targets:**
-- "Build the project." (Calls `make_build` tool)
-- "Run the tests." (Calls `make_test` tool)
-- "Clean up build artifacts." (Calls `make_clean` tool)
-
-**Advanced Make Operations:**
-- "Run tests with verbose output and 4 parallel jobs." (Calls `make_test` with `additional_args="-j4 VERBOSE=1"`)
-- "Show me what the build target would do without actually running it." (Calls `make_build` with `dry_run=True`)
-- "Install the project with sudo privileges." (Calls `make_install` with `additional_args="SUDO=sudo"`)
 
 ## Web Interface
 
