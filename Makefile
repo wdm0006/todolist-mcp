@@ -1,19 +1,28 @@
-.PHONY: lint format setup install test
+.PHONY: install lint lint-check format format-check test clean
 
-setup:
-	uv venv .venv
+VENV_DIR = .venv
+UV = uv
 
 install:
-	uv pip install -e .[dev]
+	$(UV) venv $(VENV_DIR) --seed
+	$(UV) pip install -e ".[dev]"
 
-install-ui:
-	uv pip install -e .[dev,ui]
+lint: install
+	$(UV) run ruff check --fix .
 
-lint:
-	uv run ruff check --fix .
+lint-check: install
+	$(UV) run ruff check .
 
-format:
-	uv run ruff format .
+format: install
+	$(UV) run ruff format .
 
-test:
-	uv run python -m pytest 
+format-check: install
+	$(UV) run ruff format --check .
+
+test: install
+	$(UV) run pytest tests/
+
+clean:
+	rm -rf $(VENV_DIR)
+	find . -type f -name '*.py[co]' -delete
+	find . -type d -name '__pycache__' -exec rm -rf {} +

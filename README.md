@@ -13,18 +13,16 @@ The server provides the following tools:
 - **`remove-item`**: Remove a todo item from the database.
 - **`assistant-workflow-guide`**: Get a comprehensive workflow guide for code assistants.
 
-## Installation
-
-Requires Python 3.10+ and `uv`.
-
-1. **Dependencies**: The script will install these automatically if run with `uv`:
-    - `sqlmodel` and `fastmcp`
-
-## Running the Server
-
-You must specify a project directory for the SQLite database using `--project-dir`:
+## Install
 
 ```bash
+# Run directly from GitHub (no install needed)
+uvx --from git+https://github.com/wdm0006/todolist-mcp todolist-mcp --project-dir /path/to/your/project
+
+# Or install from source
+git clone https://github.com/wdm0006/todolist-mcp
+cd todolist-mcp
+uv sync
 uv run todo_mcp.py --project-dir /path/to/your/project
 ```
 
@@ -34,10 +32,10 @@ uv run todo_mcp.py --project-dir /path/to/your/project
 {
   "mcpServers": {
     "todolist": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "--directory", "/path/to/this/repo",
-        "run", "todo_mcp.py",
+        "--from", "git+https://github.com/wdm0006/todolist-mcp",
+        "todolist-mcp",
         "--project-dir", "/path/to/your/project"
       ]
     }

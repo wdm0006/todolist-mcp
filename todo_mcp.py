@@ -64,9 +64,7 @@ else:
 engine = create_engine(DATABASE_URL)
 
 # MCP Server instance
-mcp_server = FastMCP(
-    name="TodoMCP", description="A simple MCP server for managing a todo list. Configure with --project-dir at startup."
-)
+mcp_server = FastMCP("TodoMCP")
 
 
 class Status(str, enum.Enum):
@@ -348,7 +346,6 @@ def parse_tag_list(value: Optional[Union[str, list[str]]]) -> Optional[list[str]
     raise ValueError(f"Invalid tag_filter: {value}")
 
 
-@mcp_server.tool()
 def add_item(
     description: str,
     priority: str = Priority.MEDIUM,
@@ -393,7 +390,6 @@ def add_item(
         return todo_to_dict(todo)
 
 
-@mcp_server.tool()
 def get_item_by_id(item_id: int) -> Dict[str, Any]:
     """
     Get a specific todo item by its ID.
@@ -411,7 +407,6 @@ def get_item_by_id(item_id: int) -> Dict[str, Any]:
         return todo_to_dict(todo)
 
 
-@mcp_server.tool()
 def list_items(
     show_all_statuses: bool = False,
     status_filter: Optional[Union[str, Status, list[Union[str, Status]]]] = None,
@@ -505,13 +500,13 @@ def list_items(
 
         # Get total count before pagination for metadata
         total_count = len(session.exec(statement).all())
-        
+
         # Apply database-level pagination for efficiency if limit/offset specified
         if limit is not None:
             statement = statement.limit(limit)
         if offset is not None:
             statement = statement.offset(offset)
-            
+
         results = session.exec(statement).all()
 
         def sort_key(item: Todo):
@@ -541,10 +536,10 @@ def list_items(
                     if tag_list:
                         for tag in tag_list:
                             statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
-                    
+
                     all_results = session.exec(statement_for_sort).all()
                     sorted_results = sorted(all_results, key=sort_key, reverse=descending_sort)
-                    
+
                     # Apply manual pagination after sorting
                     start = offset or 0
                     end = start + limit if limit else len(sorted_results)
@@ -554,7 +549,7 @@ def list_items(
         else:
             # Default sorting by priority, due_date, created_at
             if limit is not None or offset is not None:
-                # Re-execute without pagination for proper sorting  
+                # Re-execute without pagination for proper sorting
                 statement_for_sort = select(Todo)
                 if status_enums:
                     statement_for_sort = statement_for_sort.where(col(Todo.status).in_(status_enums))
@@ -567,10 +562,10 @@ def list_items(
                 if tag_list:
                     for tag in tag_list:
                         statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
-                
+
                 all_results = session.exec(statement_for_sort).all()
                 sorted_results = sorted(all_results, key=sort_key)
-                
+
                 # Apply manual pagination after sorting
                 start = offset or 0
                 end = start + limit if limit else len(sorted_results)
@@ -579,16 +574,15 @@ def list_items(
                 results = sorted(results, key=sort_key)
 
         processed_results = [todo_to_dict(item) for item in results]
-        
+
         # Include total_count in response for pagination metadata
         response = {"items": processed_results}
         if limit is not None or offset is not None:
             response["total_count"] = total_count
-        
+
         return response
 
 
-@mcp_server.tool()
 def update_item(
     item_id: int,
     description: Optional[str] = None,
@@ -662,7 +656,6 @@ def update_item(
             return {"message": "No changes specified for the item.", "item": todo_to_dict(todo)}
 
 
-@mcp_server.tool()
 def mark_item_done(item_id: int) -> Dict[str, Any]:
     """
     Mark a todo item as DONE.
@@ -678,7 +671,6 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
     return update_item(item_id=item_id, status=Status.DONE)
 
 
-@mcp_server.tool()
 def remove_item(item_id: int) -> Dict[str, Any]:
     """
     Remove a todo item from the database.
@@ -698,7 +690,6 @@ def remove_item(item_id: int) -> Dict[str, Any]:
         return {"message": f"Removed todo item #{item_id}: '{item_description}'", "id": item_id, "status": "removed"}
 
 
-@mcp_server.tool()
 def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     """
     Create a dependency between two todo items where one blocks another.
@@ -755,7 +746,6 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
         }
 
 
-@mcp_server.tool()
 def remove_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     """
     Remove a dependency between two todo items.
@@ -783,7 +773,6 @@ def remove_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
         return {"message": f"Removed dependency: #{blocker_id} no longer blocks #{blocked_id}", "status": "removed"}
 
 
-@mcp_server.tool()
 def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
     """
     List dependencies for a specific todo item or all dependencies.
@@ -876,7 +865,6 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
             return {"dependencies": dependencies}
 
 
-@mcp_server.tool()
 def get_ready_items() -> Dict[str, Any]:
     """
     Get todo items that are ready to work on (not blocked by incomplete items).
@@ -931,7 +919,6 @@ def get_ready_items() -> Dict[str, Any]:
         }
 
 
-@mcp_server.tool()
 def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any]:
     """
     Get the full dependency chain for a todo item.
@@ -1014,7 +1001,6 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
         return chain
 
 
-@mcp_server.tool()
 def assistant_workflow_guide() -> Dict[str, str]:
     """
     Returns a comprehensive guide for code assistants on how to use this todo system for long-term project management.
@@ -1302,13 +1288,33 @@ and it will become an invaluable project management tool!
     return {"guide": guide}
 
 
-if __name__ == "__main__":
+# --- Register tools with MCP server (explicit registration keeps functions callable) ---
+mcp_server.tool()(add_item)
+mcp_server.tool()(get_item_by_id)
+mcp_server.tool()(list_items)
+mcp_server.tool()(update_item)
+mcp_server.tool()(mark_item_done)
+mcp_server.tool()(remove_item)
+mcp_server.tool()(add_dependency)
+mcp_server.tool()(remove_dependency)
+mcp_server.tool()(list_dependencies)
+mcp_server.tool()(get_ready_items)
+mcp_server.tool()(get_dependency_chain)
+mcp_server.tool()(assistant_workflow_guide)
+
+
+def main():
+    """Entry point for the TodoList MCP server."""
     if not cli_args.project_dir:
         print("Error: --project-dir is required when running the server directly.", file=sys.stderr)
-        print("Usage: python scripts/todo_mcp.py --project-dir /path/to/your/project_root", file=sys.stderr)
+        print("Usage: todolist-mcp --project-dir /path/to/your/project_root", file=sys.stderr)
         sys.exit(1)
 
     print(f"Starting TodoMCP server. Database: {DATABASE_FILE.resolve()}")
     print("Ensure --project-dir is set correctly if not using default.")
     create_db_and_tables()
     mcp_server.run()
+
+
+if __name__ == "__main__":
+    main()
