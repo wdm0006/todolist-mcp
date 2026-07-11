@@ -724,6 +724,28 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
         if existing:
             return {"error": f"Dependency already exists: #{blocker_id} blocks #{blocked_id}"}
 
+        # Reject edges that would create a cycle: if blocked_id already reaches
+        # blocker_id by following existing blocker->blocked edges, then adding
+        # blocker_id -> blocked_id closes a loop.
+        visited: set[int] = set()
+        stack = [blocked_id]
+        while stack:
+            current = stack.pop()
+            if current == blocker_id:
+                return {
+                    "error": (
+                        f"Adding this dependency would create a circular dependency: "
+                        f"#{blocked_id} already blocks #{blocker_id} (directly or transitively)."
+                    )
+                }
+            if current in visited:
+                continue
+            visited.add(current)
+            downstream = session.exec(
+                select(TodoDependency.blocked_id).where(TodoDependency.blocker_id == current)
+            ).all()
+            stack.extend(downstream)
+
         # Create the dependency
         dependency = TodoDependency(blocker_id=blocker_id, blocked_id=blocked_id, created_at=datetime.utcnow())
         session.add(dependency)
