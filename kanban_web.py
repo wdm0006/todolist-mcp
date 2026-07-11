@@ -1127,7 +1127,7 @@ def generate_kanban_html(session: Session) -> str:
                 due_date_html = f'<div class="due-date">Due: {todo.due_date}</div>'
 
             todo_cards += f'''
-            <div class="todo-card priority-{todo.priority}" data-todo-id="{todo.id}" 
+            <div class="todo-card priority-{todo.priority.value}" data-todo-id="{todo.id}"
                  onclick="showDetailModal({todo.id})" style="cursor: pointer;">
                 <div class="card-header">
                     <div class="card-title">{todo.description}</div>
@@ -1137,8 +1137,8 @@ def generate_kanban_html(session: Session) -> str:
                 {due_date_html}
                 <div class="card-footer">
                     <div class="priority-indicator">
-                        <div class="priority-dot {todo.priority}"></div>
-                        <span>{todo.priority.title()} Priority</span>
+                        <div class="priority-dot {todo.priority.value}"></div>
+                        <span>{todo.priority.value.title()} Priority</span>
                     </div>
                     <div class="card-actions">
                         <button class="btn btn-sm" hx-delete="/todos/{todo.id}" 
@@ -1155,7 +1155,7 @@ def generate_kanban_html(session: Session) -> str:
                 <h2 class="column-title">{config["title"]}</h2>
                 <span class="item-count">{len(todos_by_status[status])}</span>
             </div>
-            <div class="todo-list" data-status="{status}">
+            <div class="todo-list" data-status="{status.value}">
                 {todo_cards}
             </div>
         </div>
