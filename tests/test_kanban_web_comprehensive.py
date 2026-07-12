@@ -622,15 +622,13 @@ class TestErrorHandling:
         response = client.post("/todos", data=form_data)
         assert response.status_code == 422  # Validation error
 
-    def test_database_constraint_violations(self, test_client):
-        """Test database constraint violations"""
+    def test_empty_description_validation(self, test_client):
+        """Test that the required description field rejects an empty value"""
         client, _ = test_client
 
-        # Test empty description (should succeed as empty string is valid)
         form_data = {"description": ""}
         response = client.post("/todos", data=form_data, follow_redirects=False)
-        # Empty description is actually allowed, so this should succeed
-        assert response.status_code == 303
+        assert response.status_code == 422
 
 
 class TestPerformanceAndScalability:
