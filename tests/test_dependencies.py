@@ -128,6 +128,57 @@ class TestDependencyManagement:
         assert "error" in result2
         assert "already exists" in result2["error"]
 
+    def test_add_dependency_direct_cycle(self, sample_todos):
+        """Test that a direct cycle (A blocks B, then B blocks A) is rejected."""
+        schema_id = sample_todos["schema"].id
+        auth_id = sample_todos["auth"].id
+
+        # A blocks B
+        result1 = todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=auth_id)
+        assert "error" not in result1
+
+        # B blocks A would close a loop
+        result2 = todo_mcp.add_dependency(blocker_id=auth_id, blocked_id=schema_id)
+        assert "error" in result2
+        assert "circular" in result2["error"]
+
+        # The offending row must not have been inserted
+        deps = todo_mcp.list_dependencies()
+        dep_pairs = [(d["blocker"]["id"], d["blocked"]["id"]) for d in deps["dependencies"]]
+        assert (auth_id, schema_id) not in dep_pairs
+        assert len(dep_pairs) == 1
+
+    def test_add_dependency_transitive_cycle(self, sample_todos):
+        """Test that a transitive cycle (A->B->C, then C->A) is rejected."""
+        schema_id = sample_todos["schema"].id
+        auth_id = sample_todos["auth"].id
+        ui_id = sample_todos["ui"].id
+
+        # Build chain A -> B -> C
+        assert "error" not in todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=auth_id)
+        assert "error" not in todo_mcp.add_dependency(blocker_id=auth_id, blocked_id=ui_id)
+
+        # C blocks A would close the loop A -> B -> C -> A
+        result = todo_mcp.add_dependency(blocker_id=ui_id, blocked_id=schema_id)
+        assert "error" in result
+        assert "circular" in result["error"]
+
+        deps = todo_mcp.list_dependencies()
+        dep_pairs = [(d["blocker"]["id"], d["blocked"]["id"]) for d in deps["dependencies"]]
+        assert (ui_id, schema_id) not in dep_pairs
+        assert len(dep_pairs) == 2
+
+    def test_add_dependency_acyclic_chain_allowed(self, sample_todos):
+        """Test that valid acyclic edges, including a shortcut, are accepted."""
+        schema_id = sample_todos["schema"].id
+        auth_id = sample_todos["auth"].id
+        ui_id = sample_todos["ui"].id
+
+        # A -> B, B -> C, and the A -> C shortcut are all acyclic
+        assert "error" not in todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=auth_id)
+        assert "error" not in todo_mcp.add_dependency(blocker_id=auth_id, blocked_id=ui_id)
+        assert "error" not in todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=ui_id)
+
     def test_remove_dependency_success(self, sample_todos):
         """Test successful dependency removal."""
         schema_id = sample_todos["schema"].id
