@@ -33,6 +33,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
+from utc_timestamp import utc_now
 
 # Import shared models and migrations from todo_mcp
 try:
@@ -61,8 +62,8 @@ except ImportError:
         long_description: Optional[str] = Field(default=None)
         status: Status = Field(default=Status.OPEN, index=True)
         priority: Priority = Field(default=Priority.MEDIUM, index=True)
-        created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-        updated_at: datetime = Field(default_factory=datetime.utcnow)
+        created_at: datetime = Field(default_factory=utc_now, index=True)
+        updated_at: datetime = Field(default_factory=utc_now)
         due_date: Optional[date] = Field(default=None, index=True)
         tags: Optional[str] = Field(default=None, index=True)
 
@@ -1222,7 +1223,7 @@ async def update_todo_status(todo_id: int, status: Status = Form(...), session: 
         raise HTTPException(status_code=404, detail="Todo not found")
 
     todo.status = status
-    todo.updated_at = datetime.utcnow()
+    todo.updated_at = utc_now()
     session.add(todo)
     session.commit()
 

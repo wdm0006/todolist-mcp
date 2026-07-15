@@ -17,6 +17,7 @@ import difflib
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
 from sqlalchemy import text
 from fastmcp import FastMCP
+from utc_timestamp import utc_now
 
 
 # --- Argument Parsing for Project Directory ---
@@ -111,8 +112,8 @@ if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
         long_description: Optional[str] = Field(default=None)
         status: Status = Field(default=Status.OPEN, index=True)
         priority: Priority = Field(default=Priority.MEDIUM, index=True)
-        created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-        updated_at: datetime = Field(default_factory=datetime.utcnow)
+        created_at: datetime = Field(default_factory=utc_now, index=True)
+        updated_at: datetime = Field(default_factory=utc_now)
         due_date: Optional[date] = Field(default=None, index=True)
         tags: Optional[str] = Field(default=None, index=True)
 
@@ -125,7 +126,7 @@ if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
         id: Optional[int] = Field(default=None, primary_key=True)
         blocker_id: int = Field(foreign_key="todo.id", index=True)
         blocked_id: int = Field(foreign_key="todo.id", index=True)
-        created_at: datetime = Field(default_factory=datetime.utcnow)
+        created_at: datetime = Field(default_factory=utc_now)
 
     # Mark that the table has been defined
     sys.modules[__name__]._TODO_TABLE_DEFINED = True
@@ -382,7 +383,7 @@ def add_item(
             priority=priority_enum,
             due_date=parsed_due_date,
             tags=tags,
-            updated_at=datetime.utcnow(),
+            updated_at=utc_now(),
         )
         session.add(todo)
         session.commit()
@@ -647,7 +648,7 @@ def update_item(
             updated = True
 
         if updated:
-            todo.updated_at = datetime.utcnow()
+            todo.updated_at = utc_now()
             session.add(todo)
             session.commit()
             session.refresh(todo)
@@ -747,7 +748,7 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
             stack.extend(downstream)
 
         # Create the dependency
-        dependency = TodoDependency(blocker_id=blocker_id, blocked_id=blocked_id, created_at=datetime.utcnow())
+        dependency = TodoDependency(blocker_id=blocker_id, blocked_id=blocked_id, created_at=utc_now())
         session.add(dependency)
         session.commit()
         session.refresh(dependency)

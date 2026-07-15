@@ -31,7 +31,7 @@ web = [
 ]
 
 [tool.hatch.build]
-only-include = ["todo_mcp.py"]
+only-include = ["todo_mcp.py", "utc_timestamp.py"]
 
 [tool.ruff]
 target-version = "py310"
