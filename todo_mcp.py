@@ -347,6 +347,13 @@ def parse_tag_list(value: Optional[Union[str, list[str]]]) -> Optional[list[str]
     raise ValueError(f"Invalid tag_filter: {value}")
 
 
+def has_tags(stored_tags: Optional[str], requested_tags: list[str]) -> bool:
+    if stored_tags is None:
+        return False
+    tags = {tag.strip().casefold() for tag in stored_tags.split(",") if tag.strip()}
+    return all(tag.strip().casefold() in tags for tag in requested_tags)
+
+
 def add_item(
     description: str,
     priority: str = Priority.MEDIUM,
@@ -428,7 +435,7 @@ def list_items(
             Each must be one of: 'high', 'medium', 'low'.
         sort_by (str, optional): Field to sort by. Prefix with '-' for descending.
             Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
-        tag_filter (str or list[str], optional): Filter by one or more tag substrings (AND logic).
+        tag_filter (str or list[str], optional): Filter by one or more exact tags (AND logic).
         limit (int, optional): Maximum number of items to return. Useful for pagination.
         offset (int, optional): Number of items to skip. Use with limit for pagination.
 
@@ -476,10 +483,6 @@ def list_items(
         if priority_enums:
             statement = statement.where(col(Todo.priority).in_(priority_enums))
 
-        if tag_list:
-            for tag in tag_list:
-                statement = statement.where(Todo.tags.like(f"%{tag}%"))
-
         valid_sort_fields = ["priority", "due_date", "created_at", "status", "description", "id"]
         if sort_by:
             descending = sort_by.startswith("-")
@@ -499,16 +502,11 @@ def list_items(
         else:
             statement = statement.order_by(Todo.due_date.asc(), Todo.created_at.asc())
 
-        # Get total count before pagination for metadata
-        total_count = len(session.exec(statement).all())
-
-        # Apply database-level pagination for efficiency if limit/offset specified
-        if limit is not None:
-            statement = statement.limit(limit)
-        if offset is not None:
-            statement = statement.offset(offset)
-
         results = session.exec(statement).all()
+        if tag_list:
+            results = [item for item in results if has_tags(item.tags, tag_list)]
+
+        total_count = len(results)
 
         def sort_key(item: Todo):
             return (
@@ -517,62 +515,17 @@ def list_items(
                 item.created_at,
             )
 
-        # For priority sorting, we need to sort the results manually
         if sort_by:
             descending_sort = sort_by.startswith("-")
             actual_sort_field = sort_by[1:] if descending_sort else sort_by
             if actual_sort_field == "priority":
-                # Need to get all results for sorting, then apply pagination
-                if limit is not None or offset is not None:
-                    # Re-execute without pagination for proper sorting
-                    statement_for_sort = select(Todo)
-                    if status_enums:
-                        statement_for_sort = statement_for_sort.where(col(Todo.status).in_(status_enums))
-                    elif not show_all_statuses:
-                        statement_for_sort = statement_for_sort.where(
-                            col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS])
-                        )
-                    if priority_enums:
-                        statement_for_sort = statement_for_sort.where(col(Todo.priority).in_(priority_enums))
-                    if tag_list:
-                        for tag in tag_list:
-                            statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
-
-                    all_results = session.exec(statement_for_sort).all()
-                    sorted_results = sorted(all_results, key=sort_key, reverse=descending_sort)
-
-                    # Apply manual pagination after sorting
-                    start = offset or 0
-                    end = start + limit if limit else len(sorted_results)
-                    results = sorted_results[start:end]
-                else:
-                    results = sorted(results, key=sort_key, reverse=descending_sort)
+                results = sorted(results, key=sort_key, reverse=descending_sort)
         else:
-            # Default sorting by priority, due_date, created_at
-            if limit is not None or offset is not None:
-                # Re-execute without pagination for proper sorting
-                statement_for_sort = select(Todo)
-                if status_enums:
-                    statement_for_sort = statement_for_sort.where(col(Todo.status).in_(status_enums))
-                elif not show_all_statuses:
-                    statement_for_sort = statement_for_sort.where(
-                        col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS])
-                    )
-                if priority_enums:
-                    statement_for_sort = statement_for_sort.where(col(Todo.priority).in_(priority_enums))
-                if tag_list:
-                    for tag in tag_list:
-                        statement_for_sort = statement_for_sort.where(Todo.tags.like(f"%{tag}%"))
+            results = sorted(results, key=sort_key)
 
-                all_results = session.exec(statement_for_sort).all()
-                sorted_results = sorted(all_results, key=sort_key)
-
-                # Apply manual pagination after sorting
-                start = offset or 0
-                end = start + limit if limit else len(sorted_results)
-                results = sorted_results[start:end]
-            else:
-                results = sorted(results, key=sort_key)
+        start = offset or 0
+        end = start + limit if limit is not None else len(results)
+        results = results[start:end]
 
         processed_results = [todo_to_dict(item) for item in results]
 

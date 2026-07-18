@@ -156,6 +156,31 @@ def test_pagination_with_tag_filter_and_sorting(temp_db, sample_todos):
     assert result["total_count"] == 4
 
 
+def test_tag_filter_matches_exact_membership(temp_db):
+    add_item(description="Build task", tags="build,testing")
+    exact = add_item(description="Exact task", tags="ui,test")
+
+    assert [item["id"] for item in list_items(tag_filter="ui")["items"]] == [exact["id"]]
+    assert [item["id"] for item in list_items(tag_filter="test")["items"]] == [exact["id"]]
+
+
+def test_tag_filter_treats_like_metacharacters_literally(temp_db):
+    add_item(description="Ordinary tag", tags="abc")
+    percent = add_item(description="Percent tag", tags="%")
+    underscore = add_item(description="Underscore tag", tags="a_c")
+
+    assert [item["id"] for item in list_items(tag_filter="%")["items"]] == [percent["id"]]
+    assert [item["id"] for item in list_items(tag_filter="a_c")["items"]] == [underscore["id"]]
+
+
+def test_tag_filter_strips_whitespace_and_ands_multiple_tags(temp_db):
+    both = add_item(description="Both tags", tags="backend, security")
+    add_item(description="Backend only", tags="backend")
+
+    assert [item["id"] for item in list_items(tag_filter=" security ")["items"]] == [both["id"]]
+    assert [item["id"] for item in list_items(tag_filter=["backend", "security"])["items"]] == [both["id"]]
+
+
 def test_get_item_by_id_with_all_fields(temp_db):
     # Test get_item_by_id with item that has all fields populated
     result = add_item(
