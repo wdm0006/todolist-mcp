@@ -365,6 +365,9 @@ def add_item(
     Returns:
         dict: The created todo item as a dictionary, or an error message.
     """
+    if description is None or not description.strip():
+        return {"error": "Description cannot be empty."}
+    description = description.strip()
     try:
         priority_enum = parse_priority(priority)
     except ValueError as e:
@@ -617,7 +620,9 @@ def update_item(
 
         updated = False
         if description is not None:
-            todo.description = description
+            if not description.strip():
+                return {"error": "Description cannot be empty."}
+            todo.description = description.strip()
             updated = True
         if status is not None:
             try:
