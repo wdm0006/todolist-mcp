@@ -15,7 +15,7 @@ import sys
 import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
-from sqlalchemy import text
+from sqlalchemy import UniqueConstraint, text
 from fastmcp import FastMCP
 from utc_timestamp import utc_now
 
@@ -123,6 +123,8 @@ if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
         Represents a 'blocking' relationship where blocker_id blocks blocked_id.
         """
 
+        __table_args__ = (UniqueConstraint("blocker_id", "blocked_id", name="uq_tododependency_pair"),)
+
         id: Optional[int] = Field(default=None, primary_key=True)
         blocker_id: int = Field(foreign_key="todo.id", index=True)
         blocked_id: int = Field(foreign_key="todo.id", index=True)
@@ -220,6 +222,31 @@ def run_migrations():
                 except Exception as e:
                     print(f"Warning: Could not create TodoDependency table: {e}")
                     pass
+
+        # Migration 3: Enforce unique dependency pairs on every database
+        if current_version < 3:
+            try:
+                session.exec(
+                    text("""
+                    DELETE FROM tododependency
+                    WHERE id NOT IN (
+                        SELECT MIN(id)
+                        FROM tododependency
+                        GROUP BY blocker_id, blocked_id
+                    )
+                """)
+                )
+                session.exec(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_dependency "
+                        "ON tododependency(blocker_id, blocked_id)"
+                    )
+                )
+                session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (3, datetime('now'))"))
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"Warning: Could not enforce unique dependency pairs: {e}")
 
 
 def create_db_and_tables():
