@@ -5,6 +5,7 @@ import pathlib
 import pytest
 import sys
 import tempfile
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, create_engine
 from unittest.mock import patch
 
@@ -423,6 +424,66 @@ class TestDependencyMigration:
                     )
                     table_exists = result.first() is not None
                     assert table_exists
+
+    def test_new_database_rejects_duplicate_dependency_pairs(self):
+        """Test that model metadata enforces unique dependency pairs."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_engine = create_engine(f"sqlite:///{pathlib.Path(temp_dir) / 'fresh.db'}")
+
+            todo_mcp.SQLModel.metadata.create_all(temp_engine)
+
+            with Session(temp_engine) as session:
+                session.add(todo_mcp.TodoDependency(blocker_id=1, blocked_id=2))
+                session.commit()
+                session.add(todo_mcp.TodoDependency(blocker_id=1, blocked_id=2))
+
+                with pytest.raises(IntegrityError):
+                    session.commit()
+
+    def test_version_2_migration_deduplicates_and_enforces_unique_pairs(self):
+        """Test upgrading a version-2 database with duplicate dependency pairs."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_engine = create_engine(f"sqlite:///{pathlib.Path(temp_dir) / 'version_2.db'}")
+
+            with Session(temp_engine) as session:
+                session.exec(
+                    todo_mcp.text("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT)")
+                )
+                session.exec(todo_mcp.text("INSERT INTO schema_version VALUES (2, datetime('now'))"))
+                session.exec(
+                    todo_mcp.text(
+                        "CREATE TABLE tododependency ("
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT, blocker_id INTEGER NOT NULL, "
+                        "blocked_id INTEGER NOT NULL, created_at TEXT NOT NULL)"
+                    )
+                )
+                session.exec(
+                    todo_mcp.text(
+                        "INSERT INTO tododependency (blocker_id, blocked_id, created_at) VALUES "
+                        "(1, 2, 'first'), (1, 2, 'duplicate'), (1, 3, 'distinct')"
+                    )
+                )
+                session.commit()
+
+            with patch.object(todo_mcp, "engine", temp_engine):
+                todo_mcp.run_migrations()
+                todo_mcp.run_migrations()
+
+            with Session(temp_engine) as session:
+                rows = session.exec(
+                    todo_mcp.text("SELECT id, blocker_id, blocked_id, created_at FROM tododependency ORDER BY id")
+                ).all()
+                versions = session.exec(todo_mcp.text("SELECT version FROM schema_version ORDER BY version")).all()
+
+                assert rows == [(1, 1, 2, "first"), (3, 1, 3, "distinct")]
+                assert versions == [(2,), (3,)]
+
+                with pytest.raises(IntegrityError):
+                    session.exec(
+                        todo_mcp.text(
+                            "INSERT INTO tododependency (blocker_id, blocked_id, created_at) VALUES (1, 2, 'again')"
+                        )
+                    )
 
 
 if __name__ == "__main__":
