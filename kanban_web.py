@@ -22,6 +22,7 @@ Usage: uv run kanban_web.py --project-dir /path/to/project
 """
 
 import argparse
+import html
 import sys
 import pathlib
 from datetime import datetime, date
@@ -844,6 +845,19 @@ HTML_BASE = """
             document.getElementById('createModal').classList.remove('show');
         }
         
+        // Render persisted todo content as text, never as markup
+        function escapeHtml(value) {
+            if (value === null || value === undefined) {
+                return '';
+            }
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Detail modal functions
         function showDetailModal(todoId) {
             // Prevent event bubbling from card click
@@ -886,8 +900,8 @@ HTML_BASE = """
             let tagsHtml = '';
             if (todo.tags) {
                 const tags = todo.tags.split(',');
-                const tagElements = tags.map(tag => 
-                    `<span class="tag tag-${tag.trim().toLowerCase()}">${tag.trim()}</span>`
+                const tagElements = tags.map(tag =>
+                    `<span class="tag tag-${escapeHtml(tag.trim().toLowerCase())}">${escapeHtml(tag.trim())}</span>`
                 ).join('');
                 tagsHtml = `<div style="margin-bottom: 1rem;">
                     <div class="form-label">Tags:</div>
@@ -898,12 +912,13 @@ HTML_BASE = """
             // Build long description HTML
             let longDescHtml = '';
             if (todo.long_description) {
+                const longDescText = escapeHtml(todo.long_description);
                 longDescHtml = `
                     <div style="margin-bottom: 1rem;">
                         <div class="form-label">Detailed Description:</div>
                         <div style="background: rgba(0, 10, 20, 0.8); border: 2px solid #00ccff; 
                                      padding: 1rem; color: #00ff41; font-family: 'JetBrains Mono', monospace; 
-                                     line-height: 1.5; white-space: pre-wrap;">${todo.long_description}</div>
+                                     line-height: 1.5; white-space: pre-wrap;">${longDescText}</div>
                     </div>
                 `;
             }
@@ -911,9 +926,10 @@ HTML_BASE = """
             // Build due date HTML
             let dueDateHtml = '';
             if (todo.due_date) {
+                const dueDateText = escapeHtml(todo.due_date);
                 dueDateHtml = `<div style="margin-bottom: 1rem;">
                     <div class="form-label">Due Date:</div>
-                    <div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${todo.due_date}</div>
+                    <div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${dueDateText}</div>
                 </div>`;
             }
             
@@ -921,7 +937,7 @@ HTML_BASE = """
                 <div style="margin-bottom: 1rem;">
                     <div class="form-label">Task:</div>
                     <div style="color: #00ff41; font-size: 1.1rem; font-weight: 500; 
-                                 text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${todo.description}</div>
+                                 text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${escapeHtml(todo.description)}</div>
                 </div>
                 
                 ${longDescHtml}
@@ -934,7 +950,7 @@ HTML_BASE = """
                                          border: 1px solid ${priorityColor}; background: ${priorityColor}; 
                                          box-shadow: 0 0 5px ${priorityColor};"></div>
                             <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                          text-transform: uppercase;">${statusLabel}</span>
+                                          text-transform: uppercase;">${escapeHtml(statusLabel)}</span>
                         </div>
                     </div>
                     <div>
@@ -944,7 +960,7 @@ HTML_BASE = """
                                          border: 1px solid ${priorityColor}; background: ${priorityColor}; 
                                          box-shadow: 0 0 5px ${priorityColor};"></div>
                             <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                          text-transform: uppercase;">${todo.priority}</span>
+                                          text-transform: uppercase;">${escapeHtml(todo.priority)}</span>
                         </div>
                     </div>
                 </div>
@@ -1118,7 +1134,7 @@ def generate_kanban_html(session: Session) -> str:
                         ]
                         else ""
                     )
-                    tag_elements.append(f'<span class="tag {tag_class}">{tag}</span>')
+                    tag_elements.append(f'<span class="tag {tag_class}">{html.escape(tag)}</span>')
                 if len(tags) > 5:
                     tag_elements.append(f'<span class="tag">+{len(tags) - 5}</span>')
                 tags_html = f'<div class="card-tags">{"".join(tag_elements)}</div>'
@@ -1131,7 +1147,7 @@ def generate_kanban_html(session: Session) -> str:
             <div class="todo-card priority-{todo.priority.value}" data-todo-id="{todo.id}"
                  onclick="showDetailModal({todo.id})" style="cursor: pointer;">
                 <div class="card-header">
-                    <div class="card-title">{todo.description}</div>
+                    <div class="card-title">{html.escape(todo.description)}</div>
                     <div class="card-id">#{todo.id}</div>
                 </div>
                 {tags_html}
