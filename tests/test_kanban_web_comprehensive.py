@@ -32,7 +32,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from kanban_web import app, Todo, Status, Priority, setup_database, get_session
+from kanban_web import app, Todo, TodoDependency, Status, Priority, setup_database, get_session
 
 
 @pytest.fixture(scope="function")
@@ -371,6 +371,24 @@ class TestAPIEndpoints:
         with Session(engine) as session:
             deleted_todo = session.get(Todo, todo_id)
             assert deleted_todo is None
+
+    @pytest.mark.parametrize("deleted_index", [0, 1])
+    def test_delete_todo_removes_referencing_dependencies(self, test_client, sample_todos, deleted_index):
+        """Test deleting either dependency endpoint through the web route."""
+        client, engine = test_client
+        referenced_ids = (sample_todos[0].id, sample_todos[1].id)
+        unrelated_ids = (sample_todos[2].id, sample_todos[3].id)
+        with Session(engine) as session:
+            session.add(TodoDependency(blocker_id=referenced_ids[0], blocked_id=referenced_ids[1]))
+            session.add(TodoDependency(blocker_id=unrelated_ids[0], blocked_id=unrelated_ids[1]))
+            session.commit()
+
+        response = client.delete(f"/todos/{referenced_ids[deleted_index]}", follow_redirects=False)
+
+        assert response.status_code == 303
+        with Session(engine) as session:
+            dependencies = session.exec(select(TodoDependency)).all()
+            assert [(dependency.blocker_id, dependency.blocked_id) for dependency in dependencies] == [unrelated_ids]
 
     def test_delete_nonexistent_todo(self, test_client):
         """Test deleting non-existent todo"""

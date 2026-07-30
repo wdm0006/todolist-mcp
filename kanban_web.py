@@ -33,12 +33,12 @@ from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
 from sqlmodel import SQLModel, Field, create_engine, Session, select
-from sqlalchemy import text
+from sqlalchemy import delete, or_, text
 from utc_timestamp import utc_now
 
 # Import shared models and migrations from todo_mcp
 try:
-    from todo_mcp import Todo, Status, Priority, run_migrations
+    from todo_mcp import Todo, TodoDependency, Status, Priority, delete_todo_with_dependencies, run_migrations
 except ImportError:
     # Fallback definitions if todo_mcp isn't available
 
@@ -68,9 +68,26 @@ except ImportError:
         due_date: Optional[date] = Field(default=None, index=True)
         tags: Optional[str] = Field(default=None, index=True)
 
+    class TodoDependency(SQLModel, table=True, extend_existing=True):
+        """Dependency between two todo items."""
+
+        id: Optional[int] = Field(default=None, primary_key=True)
+        blocker_id: int = Field(foreign_key="todo.id", index=True)
+        blocked_id: int = Field(foreign_key="todo.id", index=True)
+        created_at: datetime = Field(default_factory=utc_now)
+
     def run_migrations():
         """Placeholder migration function"""
         pass
+
+    def delete_todo_with_dependencies(session: Session, todo: Todo):
+        """Stage deletion of a todo and every dependency that references it."""
+        session.exec(
+            delete(TodoDependency).where(
+                or_(TodoDependency.blocker_id == todo.id, TodoDependency.blocked_id == todo.id)
+            )
+        )
+        session.delete(todo)
 
 
 # Global database engine
@@ -1256,7 +1273,7 @@ async def delete_todo(todo_id: int, session: Session = Depends(get_session)):
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
 
-    session.delete(todo)
+    delete_todo_with_dependencies(session, todo)
     session.commit()
 
     # Return redirect to main page after successful deletion
