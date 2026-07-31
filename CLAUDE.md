@@ -83,8 +83,8 @@ This MCP server is specifically designed for code assistants to manage long-term
 add_item(
     description="Implement OAuth2 authentication with JWT tokens",
     priority="high",
-    due_date_str="2024-03-31", 
-    tags="backend,security,oauth,feature"
+    due_date_str="2024-03-31",
+    tags="backend,security,oauth,feature",
 )
 ```
 
@@ -101,23 +101,23 @@ update_item(item_id=X, status="in_progress")
 # Before marking complete, assistant should run tests
 # (Manual step - run project's test suite)
 
-# Mark as complete only after tests pass  
+# Mark as complete only after tests pass
 mark_item_done(item_id=X)
 ```
 
 **4. Reporting and Status Tracking**
 ```python
 # Status reports
-list_items(status_filter="open")          # Backlog items
-list_items(status_filter="in_progress")   # Current work
-list_items(status_filter="done")          # Completed PRs
+list_items(status_filter="open")  # Backlog items
+list_items(status_filter="in_progress")  # Current work
+list_items(status_filter="done")  # Completed PRs
 
 # Priority-based planning
 list_items(priority_filter="high", sort_by="due_date")
 
 # Tag-based filtering
 list_items(tag_filter="backend,security")  # All backend security tasks
-list_items(tag_filter="bugfix")           # All bug fixes
+list_items(tag_filter="bugfix")  # All bug fixes
 ```
 
 ### Tagging Strategy for Assistants

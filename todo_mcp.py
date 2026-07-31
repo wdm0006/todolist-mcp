@@ -15,7 +15,7 @@ import sys
 import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
-from sqlalchemy import UniqueConstraint, text
+from sqlalchemy import UniqueConstraint, delete, or_, text
 from fastmcp import FastMCP
 from utc_timestamp import utc_now
 
@@ -657,6 +657,14 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
     return update_item(item_id=item_id, status=Status.DONE)
 
 
+def delete_todo_with_dependencies(session: Session, todo: Todo) -> None:
+    """Stage deletion of a todo and every dependency that references it."""
+    session.exec(
+        delete(TodoDependency).where(or_(TodoDependency.blocker_id == todo.id, TodoDependency.blocked_id == todo.id))
+    )
+    session.delete(todo)
+
+
 def remove_item(item_id: int) -> Dict[str, Any]:
     """
     Remove a todo item from the database.
@@ -671,7 +679,7 @@ def remove_item(item_id: int) -> Dict[str, Any]:
             return {"error": f"Todo item with ID {item_id} not found."}
 
         item_description = todo.description
-        session.delete(todo)
+        delete_todo_with_dependencies(session, todo)
         session.commit()
         return {"message": f"Removed todo item #{item_id}: '{item_description}'", "id": item_id, "status": "removed"}
 

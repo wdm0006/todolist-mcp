@@ -6,7 +6,7 @@ import pytest
 import sys
 import tempfile
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 from unittest.mock import patch
 
 # Add the project root to the Python path
@@ -87,6 +87,39 @@ class TestDependencyManagement:
         assert result["dependency"]["blocker_id"] == schema_id
         assert result["dependency"]["blocked_id"] == auth_id
         assert "created_at" in result["dependency"]
+
+    @pytest.mark.parametrize("deleted_key", ["schema", "auth"])
+    def test_remove_item_deletes_referencing_dependencies(self, temp_db, sample_todos, deleted_key):
+        """Removing either dependency endpoint deletes only its referencing edges."""
+        schema_id = sample_todos["schema"].id
+        auth_id = sample_todos["auth"].id
+        ui_id = sample_todos["ui"].id
+        docs_id = sample_todos["docs"].id
+
+        todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=auth_id)
+        todo_mcp.add_dependency(blocker_id=ui_id, blocked_id=docs_id)
+
+        result = todo_mcp.remove_item(sample_todos[deleted_key].id)
+
+        assert result["status"] == "removed"
+        with Session(temp_db) as session:
+            dependencies = session.exec(select(todo_mcp.TodoDependency)).all()
+            assert [(dependency.blocker_id, dependency.blocked_id) for dependency in dependencies] == [(ui_id, docs_id)]
+
+    def test_remove_item_rolls_back_todo_and_dependency_deletes_together(self, temp_db, sample_todos):
+        """A failed commit leaves both the todo and its dependency intact."""
+        schema_id = sample_todos["schema"].id
+        auth_id = sample_todos["auth"].id
+        todo_mcp.add_dependency(blocker_id=schema_id, blocked_id=auth_id)
+
+        with patch.object(todo_mcp.Session, "commit", side_effect=RuntimeError("commit failed")):
+            with pytest.raises(RuntimeError, match="commit failed"):
+                todo_mcp.remove_item(schema_id)
+
+        with Session(temp_db) as session:
+            assert session.get(todo_mcp.Todo, schema_id) is not None
+            dependency = session.exec(select(todo_mcp.TodoDependency)).one()
+            assert (dependency.blocker_id, dependency.blocked_id) == (schema_id, auth_id)
 
     def test_add_dependency_self_blocking(self, sample_todos):
         """Test that an item cannot block itself."""
