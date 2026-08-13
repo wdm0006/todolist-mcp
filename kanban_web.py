@@ -2,6 +2,7 @@
 # /// script
 # dependencies = [
 #   "fastapi>=0.104.0",
+#   "fastmcp>=2.14.0,<3.0.0",
 #   "uvicorn>=0.24.0",
 #   "sqlmodel>=0.0.14,<0.1.0",
 #   "jinja2>=3.1.0",
@@ -25,69 +26,23 @@ import argparse
 import html
 import sys
 import pathlib
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
-from enum import Enum
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from sqlmodel import SQLModel, Field, create_engine, Session, select
-from sqlalchemy import delete, or_, text
+from sqlmodel import SQLModel, create_engine, Session, select
 from utc_timestamp import utc_now
 
-# Import shared models and migrations from todo_mcp
-try:
-    from todo_mcp import Todo, TodoDependency, Status, Priority, delete_todo_with_dependencies, run_migrations
-except ImportError:
-    # Fallback definitions if todo_mcp isn't available
-
-    # Enumerations for Todo status and priority
-    class Status(str, Enum):
-        OPEN = "open"
-        IN_PROGRESS = "in_progress"
-        DONE = "done"
-        CANCELLED = "cancelled"
-
-    class Priority(str, Enum):
-        HIGH = "high"
-        MEDIUM = "medium"
-        LOW = "low"
-
-    # SQLModel for Todo items
-    class Todo(SQLModel, table=True, extend_existing=True):
-        """Todo item model"""
-
-        id: Optional[int] = Field(default=None, primary_key=True)
-        description: str = Field(index=True)
-        long_description: Optional[str] = Field(default=None)
-        status: Status = Field(default=Status.OPEN, index=True)
-        priority: Priority = Field(default=Priority.MEDIUM, index=True)
-        created_at: datetime = Field(default_factory=utc_now, index=True)
-        updated_at: datetime = Field(default_factory=utc_now)
-        due_date: Optional[date] = Field(default=None, index=True)
-        tags: Optional[str] = Field(default=None, index=True)
-
-    class TodoDependency(SQLModel, table=True, extend_existing=True):
-        """Dependency between two todo items."""
-
-        id: Optional[int] = Field(default=None, primary_key=True)
-        blocker_id: int = Field(foreign_key="todo.id", index=True)
-        blocked_id: int = Field(foreign_key="todo.id", index=True)
-        created_at: datetime = Field(default_factory=utc_now)
-
-    def run_migrations():
-        """Placeholder migration function"""
-        pass
-
-    def delete_todo_with_dependencies(session: Session, todo: Todo):
-        """Stage deletion of a todo and every dependency that references it."""
-        session.exec(
-            delete(TodoDependency).where(
-                or_(TodoDependency.blocker_id == todo.id, TodoDependency.blocked_id == todo.id)
-            )
-        )
-        session.delete(todo)
+from todo_mcp import (
+    Priority,
+    Status,
+    Todo,
+    TodoDependency as TodoDependency,
+    delete_todo_with_dependencies,
+    run_migrations,
+)
 
 
 # Global database engine
@@ -1305,53 +1260,6 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
     return JSONResponse(todo_dict)
 
 
-def run_migrations():
-    """
-    Run database migrations to update existing databases with new schema changes.
-    """
-    with Session(engine) as session:
-        # Create schema_version table if it doesn't exist
-        try:
-            session.exec(
-                text("""
-                CREATE TABLE IF NOT EXISTS schema_version (
-                    version INTEGER PRIMARY KEY,
-                    applied_at TEXT NOT NULL
-                )
-            """)
-            )
-            session.commit()
-        except Exception as e:
-            print(f"Warning: Could not create schema_version table: {e}")
-
-        # Check current schema version
-        try:
-            result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
-            current_version = result[0] if result and result[0] is not None else 0
-        except Exception:
-            current_version = 0
-
-        # Migration 1: Add long_description column
-        if current_version < 1:
-            try:
-                # Check if column already exists (for databases created after this migration was added)
-                session.exec(select(Todo.long_description).limit(1))
-                # Column exists, just update version
-                session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
-                session.commit()
-            except Exception:
-                # Column doesn't exist, add it
-                print("Migration 1: Adding long_description column to existing database...")
-                try:
-                    session.exec(text("ALTER TABLE todo ADD COLUMN long_description TEXT"))
-                    session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
-                    session.commit()
-                    print("Successfully added long_description column")
-                except Exception as e:
-                    print(f"Warning: Could not add long_description column: {e}")
-                    pass
-
-
 def setup_database(project_dir: Optional[str] = None):
     """Set up database connection"""
     global engine
@@ -1373,7 +1281,7 @@ def setup_database(project_dir: Optional[str] = None):
     SQLModel.metadata.create_all(engine)
 
     # Run migrations for existing databases
-    run_migrations()
+    run_migrations(engine)
 
     print(f"Database: {database_file}")
     return database_url

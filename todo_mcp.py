@@ -138,11 +138,11 @@ else:
     TodoDependency = getattr(sys.modules[__name__], "TodoDependency", None)
 
 
-def run_migrations():
+def run_migrations(database_engine=None):
     """
     Run database migrations to update existing databases with new schema changes.
     """
-    with Session(engine) as session:
+    with Session(database_engine or engine) as session:
         # Create schema_version table if it doesn't exist
         try:
             session.exec(
