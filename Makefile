@@ -5,7 +5,7 @@ UV = uv
 
 install:
 	$(UV) venv $(VENV_DIR) --seed
-	$(UV) pip install -e ".[dev]"
+	$(UV) pip install -e ".[dev,web]"
 
 lint: install
 	$(UV) run ruff check --fix .
