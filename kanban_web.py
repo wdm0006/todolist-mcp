@@ -1226,6 +1226,10 @@ async def create_todo(
     session: Session = Depends(get_session),
 ):
     """Create a new todo"""
+    description = description.strip()
+    if not description:
+        raise HTTPException(status_code=422, detail="Description cannot be empty.")
+
     due_date_obj = None
     if due_date:
         try:
