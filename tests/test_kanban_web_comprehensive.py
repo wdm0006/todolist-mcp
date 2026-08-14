@@ -323,6 +323,29 @@ class TestAPIEndpoints:
             assert new_todo.tags is None
             assert new_todo.due_date is None
 
+    @pytest.mark.parametrize("description", ["", "   "])
+    def test_create_todo_rejects_blank_description(self, test_client, description):
+        """Test blank descriptions are rejected without creating a todo"""
+        client, engine = test_client
+
+        response = client.post("/todos", data={"description": description}, follow_redirects=False)
+
+        assert response.status_code == 422
+        with Session(engine) as session:
+            assert session.exec(select(Todo)).all() == []
+
+    def test_create_todo_trims_description(self, test_client):
+        """Test surrounding whitespace is removed from valid descriptions"""
+        client, engine = test_client
+
+        response = client.post("/todos", data={"description": "  Trimmed todo  "}, follow_redirects=False)
+
+        assert response.status_code == 303
+        with Session(engine) as session:
+            todos = session.exec(select(Todo)).all()
+            assert len(todos) == 1
+            assert todos[0].description == "Trimmed todo"
+
     def test_create_todo_invalid_date(self, test_client):
         """Test creating todo with invalid due date"""
         client, engine = test_client
