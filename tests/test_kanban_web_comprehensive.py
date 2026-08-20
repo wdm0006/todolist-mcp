@@ -306,11 +306,12 @@ class TestAPIEndpoints:
             assert new_todo.tags == "test,api"
             assert new_todo.due_date == date(2024, 6, 1)
 
-    def test_create_todo_minimal_data(self, test_client):
-        """Test creating todo with minimal required data"""
+    @pytest.mark.parametrize(
+        "form_data", [{"description": "Minimal todo"}, {"description": "Minimal todo", "due_date": ""}]
+    )
+    def test_create_todo_minimal_data(self, test_client, form_data):
+        """Test creating an undated todo with an omitted or empty due date"""
         client, engine = test_client
-
-        form_data = {"description": "Minimal todo"}
 
         response = client.post("/todos", data=form_data, follow_redirects=False)
         assert response.status_code == 303
@@ -347,18 +348,17 @@ class TestAPIEndpoints:
             assert todos[0].description == "Trimmed todo"
 
     def test_create_todo_invalid_date(self, test_client):
-        """Test creating todo with invalid due date"""
+        """Test an invalid due date is rejected without creating a todo"""
         client, engine = test_client
 
         form_data = {"description": "Todo with invalid date", "due_date": "invalid-date"}
 
         response = client.post("/todos", data=form_data, follow_redirects=False)
-        assert response.status_code == 303  # Should still succeed, date ignored
+        assert response.status_code == 422
+        assert response.json() == {"detail": "Due date must be a valid date in YYYY-MM-DD format."}
 
         with Session(engine) as session:
-            new_todo = session.exec(select(Todo).where(Todo.description == "Todo with invalid date")).first()
-            assert new_todo is not None
-            assert new_todo.due_date is None  # Invalid date ignored
+            assert session.exec(select(Todo)).all() == []
 
     def test_update_todo_status(self, test_client, sample_todos):
         """Test PUT /todos/{id}/status endpoint"""

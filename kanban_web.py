@@ -1190,7 +1190,7 @@ async def create_todo(
         try:
             due_date_obj = datetime.strptime(due_date, "%Y-%m-%d").date()
         except ValueError:
-            pass
+            raise HTTPException(status_code=422, detail="Due date must be a valid date in YYYY-MM-DD format.") from None
 
     todo = Todo(
         description=description,
