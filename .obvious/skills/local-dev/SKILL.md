@@ -52,7 +52,7 @@ from fastmcp.client.transports import StdioTransport
 
 transport = StdioTransport(".venv/bin/python", ["todo_mcp.py", "--project-dir", "/tmp/todolist-mcp-dev"])
 async with Client(transport) as client:
-    tools = await client.list_tools()            # 12 tools
+    tools = await client.list_tools()  # 12 tools
     r = await client.call_tool("add_item", {"description": "smoke", "priority": "high"})
 ```
 
