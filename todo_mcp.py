@@ -489,7 +489,9 @@ def list_items(
             Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
         tag_filter (str or list[str], optional): Filter by one or more exact tags (AND logic).
         limit (int, optional): Maximum number of items to return. Useful for pagination.
+            Must be a non-negative integer (0 returns an empty page).
         offset (int, optional): Number of items to skip. Use with limit for pagination.
+            Must be a non-negative integer.
 
     Returns:
         dict: {"items": [list_of_items], "total_count": int} on success, or {"error": "message"} on failure.
@@ -524,6 +526,13 @@ def list_items(
         tag_list = parse_tag_list(tag_filter)
     except ValueError as e:
         return {"error": str(e)}
+    # Reject negative pagination values instead of letting them fall through to
+    # Python slicing, where they silently count from the end of the results
+    # (issue #22). limit=0 stays a valid empty page; offset=0 is the first page.
+    if limit is not None and limit < 0:
+        return {"error": f"Invalid limit: {limit}. Limit must be a non-negative integer."}
+    if offset is not None and offset < 0:
+        return {"error": f"Invalid offset: {offset}. Offset must be a non-negative integer."}
     with Session(get_engine()) as session:
         statement = select(Todo)
 
