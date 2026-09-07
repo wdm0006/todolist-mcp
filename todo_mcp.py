@@ -7,17 +7,21 @@
 # ///
 
 import enum
+import logging
 from datetime import datetime, date
-from typing import Optional, Dict, Any, Union
+from functools import lru_cache
+from typing import Optional, Dict, Any, Union, TYPE_CHECKING
 import pathlib
 import argparse
 import sys
 import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
-from sqlalchemy import UniqueConstraint, delete, or_, text
+from sqlalchemy import Engine, UniqueConstraint, delete, or_, text
 from fastmcp import FastMCP
 from utc_timestamp import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 # --- Argument Parsing for Project Directory ---
@@ -39,30 +43,47 @@ def parse_cli_args():
     return known_args
 
 
-cli_args = parse_cli_args()
+@lru_cache(maxsize=1)
+def get_cli_args() -> argparse.Namespace:
+    """Parse (and cache) the CLI arguments on first use — never at import time."""
+    return parse_cli_args()
 
-# --- Database Setup ---
-if cli_args.project_dir:
-    PROJECT_DIR_PATH = pathlib.Path(cli_args.project_dir).resolve()
-    if not PROJECT_DIR_PATH.is_dir():
-        print(
-            f"Error: Provided project directory does not exist or is not a directory: {PROJECT_DIR_PATH}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    DATABASE_FILE = PROJECT_DIR_PATH / "todo.db"
-    DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
-else:
-    print(
-        "Warning: --project-dir not specified. Defaulting todo.db to script's"
-        " directory parent. Use --project-dir for explicit control.",
-        file=sys.stderr,
+
+def resolve_database_path(args: argparse.Namespace) -> pathlib.Path:
+    """
+    Resolve the todo.db location from parsed CLI arguments.
+
+    Configuration problems are logged (stderr), never printed to stdout: stray
+    stdout corrupts the stdio MCP protocol.
+    """
+    if args.project_dir:
+        project_dir_path = pathlib.Path(args.project_dir).resolve()
+        if not project_dir_path.is_dir():
+            logger.error("Provided project directory does not exist or is not a directory: %s", project_dir_path)
+            raise SystemExit(1)
+        return project_dir_path / "todo.db"
+    logger.warning(
+        "--project-dir not specified. Defaulting todo.db to script's"
+        " directory parent. Use --project-dir for explicit control."
     )
-    DATABASE_FILE = pathlib.Path(__file__).resolve().parent.parent / "todo.db"  # Fallback to old logic
-    DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
+    return pathlib.Path(__file__).resolve().parent.parent / "todo.db"  # Fallback to old logic
 
 
-engine = create_engine(DATABASE_URL)
+# --- Database Setup (lazy: importing this module creates nothing) ---
+engine: Optional[Engine] = None
+
+
+def get_engine() -> Engine:
+    """Return the shared engine, creating it on first use.
+
+    Tests patch ``todo_mcp.engine`` directly; a non-None engine is returned as-is.
+    """
+    global engine
+    if engine is None:
+        database_path = resolve_database_path(get_cli_args()).resolve()
+        engine = create_engine(f"sqlite:///{database_path}")
+    return engine
+
 
 # MCP Server instance
 mcp_server = FastMCP("TodoMCP")
@@ -90,7 +111,9 @@ PRIORITY_ORDER = {Priority.HIGH: 1, Priority.MEDIUM: 2, Priority.LOW: 3}
 
 
 # Check if the Todo class already exists to prevent redefinition errors
-if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
+# (TYPE_CHECKING makes mypy analyze the definition branch; at runtime the hasattr
+# guard reuses the existing classes when the module is re-imported in-process.)
+if TYPE_CHECKING or not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
 
     class Todo(SQLModel, table=True, extend_existing=True, sqlite_autoincrement=True):
         """
@@ -142,7 +165,7 @@ def run_migrations(database_engine=None):
     """
     Run database migrations to update existing databases with new schema changes.
     """
-    with Session(database_engine or engine) as session:
+    with Session(database_engine or get_engine()) as session:
         # Create schema_version table if it doesn't exist
         try:
             session.exec(
@@ -154,14 +177,15 @@ def run_migrations(database_engine=None):
             """)
             )
             session.commit()
-        except Exception as e:
-            print(f"Warning: Could not create schema_version table: {e}")
+        except Exception:
+            logger.warning("Could not create schema_version table", exc_info=True)
 
         # Check current schema version
         try:
             result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
             current_version = result[0] if result and result[0] is not None else 0
         except Exception:
+            logger.warning("Could not read schema_version; assuming version 0", exc_info=True)
             current_version = 0
 
         # Migration 1: Add long_description column
@@ -174,15 +198,14 @@ def run_migrations(database_engine=None):
                 session.commit()
             except Exception:
                 # Column doesn't exist, add it
-                print("Migration 1: Adding long_description column to existing database...")
+                logger.info("Migration 1: Adding long_description column to existing database...")
                 try:
                     session.exec(text("ALTER TABLE todo ADD COLUMN long_description TEXT"))
                     session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
                     session.commit()
-                    print("Successfully added long_description column")
-                except Exception as e:
-                    print(f"Warning: Could not add long_description column: {e}")
-                    pass
+                    logger.info("Successfully added long_description column")
+                except Exception:
+                    logger.warning("Could not add long_description column", exc_info=True)
 
         # Migration 2: Add TodoDependency table for tracking dependencies
         if current_version < 2:
@@ -194,7 +217,7 @@ def run_migrations(database_engine=None):
                 session.commit()
             except Exception:
                 # Table doesn't exist, create it
-                print("Migration 2: Creating TodoDependency table for task dependencies...")
+                logger.info("Migration 2: Creating TodoDependency table for task dependencies...")
                 try:
                     session.exec(
                         text("""
@@ -218,10 +241,9 @@ def run_migrations(database_engine=None):
                     )
                     session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (2, datetime('now'))"))
                     session.commit()
-                    print("Successfully created TodoDependency table")
-                except Exception as e:
-                    print(f"Warning: Could not create TodoDependency table: {e}")
-                    pass
+                    logger.info("Successfully created TodoDependency table")
+                except Exception:
+                    logger.warning("Could not create TodoDependency table", exc_info=True)
 
         # Migration 3: Enforce unique dependency pairs on every database
         if current_version < 3:
@@ -244,9 +266,9 @@ def run_migrations(database_engine=None):
                 )
                 session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (3, datetime('now'))"))
                 session.commit()
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"Warning: Could not enforce unique dependency pairs: {e}")
+                logger.warning("Could not enforce unique dependency pairs", exc_info=True)
 
 
 def create_db_and_tables():
@@ -254,7 +276,7 @@ def create_db_and_tables():
     Create the database and tables if they do not exist.
     Also run any necessary migrations for existing databases.
     """
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(get_engine())
     run_migrations()
 
 
@@ -413,7 +435,7 @@ def add_item(
         except ValueError:
             return {"error": f"Invalid date format for due date: '{due_date_str}'. Please use YYYY-MM-DD."}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = Todo(
             description=description,
             long_description=long_description,
@@ -438,7 +460,7 @@ def get_item_by_id(item_id: int) -> Dict[str, Any]:
     Returns:
         dict: The todo item as a dictionary, or an error message if not found.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -502,7 +524,7 @@ def list_items(
         tag_list = parse_tag_list(tag_filter)
     except ValueError as e:
         return {"error": str(e)}
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         statement = select(Todo)
 
         if status_enums:
@@ -593,7 +615,7 @@ def update_item(
     Returns:
         dict: The updated todo item as a dictionary, or an error/message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -673,7 +695,7 @@ def remove_item(item_id: int) -> Dict[str, Any]:
     Returns:
         dict: Message and ID of the removed item, or an error message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -698,7 +720,7 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     if blocker_id == blocked_id:
         return {"error": "A todo item cannot block itself."}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         # Verify both todos exist
         blocker = session.get(Todo, blocker_id)
         if not blocker:
@@ -773,7 +795,7 @@ def remove_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     Returns:
         dict: Success message if removed, or an error message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         dependency = session.exec(
             select(TodoDependency).where(
                 (TodoDependency.blocker_id == blocker_id) & (TodoDependency.blocked_id == blocked_id)
@@ -800,7 +822,7 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
     Returns:
         dict: List of dependencies with details.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         if item_id:
             # Get specific item's dependencies
             todo = session.get(Todo, item_id)
@@ -888,7 +910,7 @@ def get_ready_items() -> Dict[str, Any]:
     Returns:
         dict: List of todo items that are not blocked or whose blockers are all done.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         # Get all open/in_progress items
         all_items = session.exec(select(Todo).where(Todo.status.in_([Status.OPEN, Status.IN_PROGRESS]))).all()
 
@@ -949,7 +971,7 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
     if direction not in ["upstream", "downstream", "both"]:
         return {"error": "Direction must be 'upstream', 'downstream', or 'both'"}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -1321,13 +1343,15 @@ mcp_server.tool()(assistant_workflow_guide)
 
 def main():
     """Entry point for the TodoList MCP server."""
-    if not cli_args.project_dir:
-        print("Error: --project-dir is required when running the server directly.", file=sys.stderr)
+    # Server diagnostics go to stderr: stdout carries the stdio MCP protocol.
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    args = get_cli_args()
+    if not args.project_dir:
+        logger.error("--project-dir is required when running the server directly.")
         print("Usage: todolist-mcp --project-dir /path/to/your/project_root", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Starting TodoMCP server. Database: {DATABASE_FILE.resolve()}")
-    print("Ensure --project-dir is set correctly if not using default.")
+    logger.info("Starting TodoMCP server. Database: %s", resolve_database_path(args).resolve())
     create_db_and_tables()
     mcp_server.run()
 
