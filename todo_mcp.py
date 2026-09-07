@@ -894,13 +894,20 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
                 "blocks": blocked,
             }
         else:
-            # Get all dependencies with manual joining
+            # Two queries total: one for the edges, one batched IN lookup for every
+            # referenced todo (was 2N+1 via per-row session.get — N+1 fixed here).
             all_deps = session.exec(select(TodoDependency)).all()
+            referenced_ids = {dep.blocker_id for dep in all_deps} | {dep.blocked_id for dep in all_deps}
+            todos_by_id: Dict[int, Todo] = {}
+            if referenced_ids:
+                todos_by_id = {
+                    todo.id: todo for todo in session.exec(select(Todo).where(col(Todo.id).in_(referenced_ids))).all()
+                }
 
             dependencies = []
             for dep in all_deps:
-                blocker = session.get(Todo, dep.blocker_id)
-                blocked_item = session.get(Todo, dep.blocked_id)
+                blocker = todos_by_id.get(dep.blocker_id)
+                blocked_item = todos_by_id.get(dep.blocked_id)
 
                 if blocker and blocked_item:
                     dependencies.append(
@@ -931,23 +938,28 @@ def get_ready_items() -> Dict[str, Any]:
         dict: List of todo items that are not blocked or whose blockers are all done.
     """
     with Session(get_engine()) as session:
-        # Get all open/in_progress items
+        # Two queries total: the open/in-progress items, then every incomplete
+        # blocker edge batch-loaded and grouped by blocked item (was 1 + N
+        # per-item queries — N+1 fixed here).
         all_items = session.exec(select(Todo).where(Todo.status.in_([Status.OPEN, Status.IN_PROGRESS]))).all()
+
+        blocker_edges = session.exec(
+            select(TodoDependency, Todo)
+            .join(Todo, col(TodoDependency.blocker_id) == Todo.id)
+            .where(col(Todo.status).not_in([Status.DONE, Status.CANCELLED]))
+        ).all()
+        blockers_by_item: Dict[int, list] = {}
+        for dep, blocker in blocker_edges:
+            blockers_by_item.setdefault(dep.blocked_id, []).append(blocker)
 
         ready_items = []
         blocked_items = []
 
         for item in all_items:
+            if item.id is None:  # unreachable for rows returned by a SELECT
+                continue
             # Check if this item is blocked by any incomplete items
-            blockers = session.exec(
-                select(Todo)
-                .join(TodoDependency, TodoDependency.blocker_id == Todo.id)
-                .where(
-                    (TodoDependency.blocked_id == item.id)
-                    & (Todo.status != Status.DONE)
-                    & (Todo.status != Status.CANCELLED)
-                )
-            ).all()
+            blockers = blockers_by_item.get(item.id, [])
 
             if not blockers:
                 # Not blocked or all blockers are complete
