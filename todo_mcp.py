@@ -555,7 +555,18 @@ def list_items(
             sort_column = getattr(Todo, field_name)
 
             if field_name != "priority":
-                if descending:
+                if field_name == "due_date":
+                    # due_date is the only nullable sort field: undated items sort
+                    # last in both directions, matching the default path's date.max
+                    # semantics (issue #30). The nulls key stays ascending even when
+                    # the date column is descending; created_at breaks ties so the
+                    # ordering is total.
+                    undated_last = col(Todo.due_date).is_(None)
+                    if descending:
+                        statement = statement.order_by(undated_last, sort_column.desc(), col(Todo.created_at).asc())
+                    else:
+                        statement = statement.order_by(undated_last, sort_column.asc(), col(Todo.created_at).asc())
+                elif descending:
                     statement = statement.order_by(sort_column.desc())
                 else:
                     statement = statement.order_by(sort_column.asc())
