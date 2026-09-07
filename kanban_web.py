@@ -1064,7 +1064,12 @@ def generate_kanban_html(session: Session) -> str:
     todos = session.exec(select(Todo)).all()
 
     # Group todos by status
-    todos_by_status = {Status.OPEN: [], Status.IN_PROGRESS: [], Status.DONE: [], Status.CANCELLED: []}
+    todos_by_status: dict[Status, list[Todo]] = {
+        Status.OPEN: [],
+        Status.IN_PROGRESS: [],
+        Status.DONE: [],
+        Status.CANCELLED: [],
+    }
 
     for todo in todos:
         todos_by_status[todo.status].append(todo)

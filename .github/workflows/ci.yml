@@ -27,6 +27,7 @@ jobs:
       - run: uv pip install -e ".[dev,web]"
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run mypy
 
   test:
     runs-on: ubuntu-latest

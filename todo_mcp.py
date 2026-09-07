@@ -111,9 +111,9 @@ PRIORITY_ORDER = {Priority.HIGH: 1, Priority.MEDIUM: 2, Priority.LOW: 3}
 
 
 # Check if the Todo class already exists to prevent redefinition errors
-# (TYPE_CHECKING makes mypy analyze the definition branch; at runtime the hasattr
-# guard reuses the existing classes when the module is re-imported in-process.)
-if TYPE_CHECKING or not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
+# (TYPE_CHECKING makes mypy analyze the definition branch; at runtime the module-
+# namespace guard reuses the existing classes when the module is re-imported.)
+if TYPE_CHECKING or "_TODO_TABLE_DEFINED" not in globals():
 
     class Todo(SQLModel, table=True, extend_existing=True, sqlite_autoincrement=True):
         """
@@ -154,7 +154,7 @@ if TYPE_CHECKING or not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"
         created_at: datetime = Field(default_factory=utc_now)
 
     # Mark that the table has been defined
-    sys.modules[__name__]._TODO_TABLE_DEFINED = True
+    globals()["_TODO_TABLE_DEFINED"] = True
 else:
     # If already defined, get the existing class
     Todo = getattr(sys.modules[__name__], "Todo", None)
@@ -343,11 +343,17 @@ def parse_status_list(value: Optional[Union[str, Status, list[str], list[Status]
     if value is None:
         return None
     if isinstance(value, (str, Status)):
-        return [parse_status(value)]
+        parsed = parse_status(value)
+        if parsed is None:  # value is not None here, so this cannot trigger
+            raise ValueError(f"Invalid status_filter: {value}")
+        return [parsed]
     if isinstance(value, list):
         result = []
         for v in value:
-            result.append(parse_status(v))
+            parsed = parse_status(v)
+            if parsed is None:  # v is not None here, so this cannot trigger
+                raise ValueError(f"Invalid status_filter: {v}")
+            result.append(parsed)
         return result
     raise ValueError(f"Invalid status_filter: {value}")
 
@@ -377,11 +383,17 @@ def parse_priority_list(value: Optional[Union[str, Priority, list[str], list[Pri
     if value is None:
         return None
     if isinstance(value, (str, Priority)):
-        return [parse_priority(value)]
+        parsed = parse_priority(value)
+        if parsed is None:  # value is not None here, so this cannot trigger
+            raise ValueError(f"Invalid priority_filter: {value}")
+        return [parsed]
     if isinstance(value, list):
         result = []
         for v in value:
-            result.append(parse_priority(v))
+            parsed = parse_priority(v)
+            if parsed is None:  # v is not None here, so this cannot trigger
+                raise ValueError(f"Invalid priority_filter: {v}")
+            result.append(parsed)
         return result
     raise ValueError(f"Invalid priority_filter: {value}")
 
@@ -572,7 +584,7 @@ def list_items(
                     statement = statement.order_by(sort_column.asc())
 
         else:
-            statement = statement.order_by(Todo.due_date.asc(), Todo.created_at.asc())
+            statement = statement.order_by(col(Todo.due_date).asc(), col(Todo.created_at).asc())
 
         results = session.exec(statement).all()
         if tag_list:
@@ -602,7 +614,7 @@ def list_items(
         processed_results = [todo_to_dict(item) for item in results]
 
         # Include total_count in response for pagination metadata
-        response = {"items": processed_results}
+        response: Dict[str, Any] = {"items": processed_results}
         if limit is not None or offset is not None:
             response["total_count"] = total_count
 
@@ -648,13 +660,19 @@ def update_item(
             updated = True
         if status is not None:
             try:
-                todo.status = parse_status(status)
+                parsed_status = parse_status(status)
+                if parsed_status is None:  # status is not None here, so this cannot trigger
+                    raise ValueError(f"Invalid status: '{status}'.")
+                todo.status = parsed_status
             except ValueError as e:
                 return {"error": str(e)}
             updated = True
         if priority is not None:
             try:
-                todo.priority = parse_priority(priority)
+                parsed_priority = parse_priority(priority)
+                if parsed_priority is None:  # priority is not None here, so this cannot trigger
+                    raise ValueError(f"Invalid priority: '{priority}'.")
+                todo.priority = parsed_priority
             except ValueError as e:
                 return {"error": str(e)}
             updated = True
@@ -702,7 +720,9 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
 def delete_todo_with_dependencies(session: Session, todo: Todo) -> None:
     """Stage deletion of a todo and every dependency that references it."""
     session.exec(
-        delete(TodoDependency).where(or_(TodoDependency.blocker_id == todo.id, TodoDependency.blocked_id == todo.id))
+        delete(TodoDependency).where(
+            or_(col(TodoDependency.blocker_id) == todo.id, col(TodoDependency.blocked_id) == todo.id)
+        )
     )
     session.delete(todo)
 
@@ -852,14 +872,14 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
             # Items that block this one
             blocking_query = session.exec(
                 select(TodoDependency, Todo)
-                .join(Todo, TodoDependency.blocker_id == Todo.id)
+                .join(Todo, col(TodoDependency.blocker_id) == Todo.id)
                 .where(TodoDependency.blocked_id == item_id)
             ).all()
 
             # Items blocked by this one
             blocked_query = session.exec(
                 select(TodoDependency, Todo)
-                .join(Todo, TodoDependency.blocked_id == Todo.id)
+                .join(Todo, col(TodoDependency.blocked_id) == Todo.id)
                 .where(TodoDependency.blocker_id == item_id)
             ).all()
 
@@ -901,7 +921,9 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
             todos_by_id: Dict[int, Todo] = {}
             if referenced_ids:
                 todos_by_id = {
-                    todo.id: todo for todo in session.exec(select(Todo).where(col(Todo.id).in_(referenced_ids))).all()
+                    todo.id: todo
+                    for todo in session.exec(select(Todo).where(col(Todo.id).in_(referenced_ids))).all()
+                    if todo.id is not None
                 }
 
             dependencies = []
@@ -941,7 +963,7 @@ def get_ready_items() -> Dict[str, Any]:
         # Two queries total: the open/in-progress items, then every incomplete
         # blocker edge batch-loaded and grouped by blocked item (was 1 + N
         # per-item queries — N+1 fixed here).
-        all_items = session.exec(select(Todo).where(Todo.status.in_([Status.OPEN, Status.IN_PROGRESS]))).all()
+        all_items = session.exec(select(Todo).where(col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS]))).all()
 
         blocker_edges = session.exec(
             select(TodoDependency, Todo)
@@ -1016,12 +1038,14 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
 
             blockers = session.exec(
                 select(Todo)
-                .join(TodoDependency, TodoDependency.blocker_id == Todo.id)
+                .join(TodoDependency, col(TodoDependency.blocker_id) == Todo.id)
                 .where(TodoDependency.blocked_id == tid)
             ).all()
 
             result = []
             for blocker in blockers:
+                if blocker.id is None:  # unreachable for rows returned by a SELECT
+                    continue
                 result.append(
                     {
                         "id": blocker.id,
@@ -1041,12 +1065,14 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
 
             blocked = session.exec(
                 select(Todo)
-                .join(TodoDependency, TodoDependency.blocked_id == Todo.id)
+                .join(TodoDependency, col(TodoDependency.blocked_id) == Todo.id)
                 .where(TodoDependency.blocker_id == tid)
             ).all()
 
             result = []
             for blocked_item in blocked:
+                if blocked_item.id is None:  # unreachable for rows returned by a SELECT
+                    continue
                 result.append(
                     {
                         "id": blocked_item.id,
@@ -1058,7 +1084,7 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
                 )
             return result
 
-        chain = {
+        chain: Dict[str, Any] = {
             "item": {"id": item_id, "description": todo.description, "status": todo.status, "priority": todo.priority}
         }
 
