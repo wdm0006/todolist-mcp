@@ -10,10 +10,7 @@ This is a Model Context Protocol (MCP) server for managing a todo list backed by
 
 ### Setup and Installation
 ```bash
-# Create virtual environment
-make setup
-
-# Install dependencies (including dev dependencies)
+# Create the virtual environment and install dependencies (including dev and web extras)
 make install
 ```
 
