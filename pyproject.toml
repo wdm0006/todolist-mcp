@@ -19,6 +19,9 @@ todolist-mcp = "todo_mcp:main"
 dev = [
     "ruff>=0.4.0",
     "pytest",
+    "pytest-cov>=6.0",
+    "pytest-timeout>=2.3",
+    "mutmut==3.7.0",
     "pre-commit",
     "mypy>=1.8"
 ]
@@ -41,6 +44,37 @@ python_version = "3.10"
 # not ship complete stubs. All in-repo errors are fixed; missing-stub packages are
 # ignored rather than silenced per-line.
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Per-test timeout guard (pytest-timeout). The full suite runs in ~11s, so a single
+# test hanging for 15s means a pathological mutant or a genuine deadlock — kill it.
+timeout = 15
+
+[tool.coverage.run]
+# App modules only - the report and the CI floor cover the shipped code,
+# not the test suite itself.
+source = ["todo_mcp", "kanban_web", "utc_timestamp"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mutmut]
+# Scope: the MCP server module only. The ~1,000-line kanban HTML template lives in
+# kanban_web.py, which stays outside the mutation scope but must still be importable
+# by the kanban test files — mutmut runs tests with the original source directory
+# removed from sys.path, so every imported module has to exist in the mutants/
+# shadow tree. also_copy provides the unmutated copies; tests/, pyproject.toml, and
+# uv.lock are copied automatically.
+source_paths = ["todo_mcp.py"]
+also_copy = ["kanban_web.py", "utc_timestamp.py"]
+pytest_add_cli_args_test_selection = ["tests"]
+# The standalone-script subprocess test resolves `import todo_mcp` from the script's
+# own directory, which under mutmut is the shadow tree — where todo_mcp.py starts
+# with mutmut's trampoline import, unavailable in the `uv run --script` ephemeral
+# environment. The test is inherently checkout-only (it verifies the PEP 723 script
+# layout), so it is excluded from mutation runs only; it stays in the normal suite.
+pytest_add_cli_args = ["--deselect=tests/test_kanban_web_standalone.py::test_standalone_script_loads_shared_schema"]
 
 [tool.ruff]
 target-version = "py310"

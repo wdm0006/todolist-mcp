@@ -498,7 +498,7 @@ def list_items(
         priority_filter (str, Priority, or list[str|Priority], optional): Filter by one or more priorities.
             Each must be one of: 'high', 'medium', 'low'.
         sort_by (str, optional): Field to sort by. Prefix with '-' for descending.
-            Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
+            Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id', 'updated_at'.
         tag_filter (str or list[str], optional): Filter by one or more exact tags (AND logic).
         limit (int, optional): Maximum number of items to return. Useful for pagination.
             Must be a non-negative integer (0 returns an empty page).
@@ -524,7 +524,7 @@ def list_items(
     Valid values:
         status_filter: 'open', 'in_progress', 'done', 'cancelled'
         priority_filter: 'high', 'medium', 'low'
-        sort_by: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'
+        sort_by: 'priority', 'due_date', 'created_at', 'status', 'description', 'id', 'updated_at'
     """
     try:
         status_enums = parse_status_list(status_filter)
@@ -556,7 +556,9 @@ def list_items(
         if priority_enums:
             statement = statement.where(col(Todo.priority).in_(priority_enums))
 
-        valid_sort_fields = ["priority", "due_date", "created_at", "status", "description", "id"]
+        # updated_at is non-nullable, so it takes the generic column path;
+        # the assistant guide recommends sort_by="-updated_at" for end-of-day review.
+        valid_sort_fields = ["priority", "due_date", "created_at", "status", "description", "id", "updated_at"]
         if sort_by:
             descending = sort_by.startswith("-")
             field_name = sort_by[1:] if descending else sort_by
@@ -1046,6 +1048,8 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
             for blocker in blockers:
                 if blocker.id is None:  # unreachable for rows returned by a SELECT
                     continue
+                if blocker.id in visited:  # already listed via another path (reconvergent graph)
+                    continue
                 result.append(
                     {
                         "id": blocker.id,
@@ -1072,6 +1076,8 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
             result = []
             for blocked_item in blocked:
                 if blocked_item.id is None:  # unreachable for rows returned by a SELECT
+                    continue
+                if blocked_item.id in visited:  # already listed via another path (reconvergent graph)
                     continue
                 result.append(
                     {
