@@ -46,3 +46,21 @@ jobs:
       - run: uv venv .venv
       - run: uv pip install -e ".[dev,web]"
       - run: uv run pytest tests/ -v
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv venv .venv
+      - run: uv pip install -e ".[dev,web]"
+      # Floor set at the measured value (89.62% across todo_mcp, kanban_web,
+      # utc_timestamp with the full suite); rounded down so a one-line shift
+      # cannot flake the gate.
+      - run: uv run pytest tests/ --cov --cov-fail-under=89 --cov-report=term-missing
