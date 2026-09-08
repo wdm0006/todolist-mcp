@@ -7,17 +7,21 @@
 # ///
 
 import enum
+import logging
 from datetime import datetime, date
-from typing import Optional, Dict, Any, Union
+from functools import lru_cache
+from typing import Optional, Dict, Any, Union, TYPE_CHECKING
 import pathlib
 import argparse
 import sys
 import difflib
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
-from sqlalchemy import UniqueConstraint, delete, or_, text
+from sqlalchemy import Engine, UniqueConstraint, delete, or_, text
 from fastmcp import FastMCP
 from utc_timestamp import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 # --- Argument Parsing for Project Directory ---
@@ -39,30 +43,47 @@ def parse_cli_args():
     return known_args
 
 
-cli_args = parse_cli_args()
+@lru_cache(maxsize=1)
+def get_cli_args() -> argparse.Namespace:
+    """Parse (and cache) the CLI arguments on first use — never at import time."""
+    return parse_cli_args()
 
-# --- Database Setup ---
-if cli_args.project_dir:
-    PROJECT_DIR_PATH = pathlib.Path(cli_args.project_dir).resolve()
-    if not PROJECT_DIR_PATH.is_dir():
-        print(
-            f"Error: Provided project directory does not exist or is not a directory: {PROJECT_DIR_PATH}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    DATABASE_FILE = PROJECT_DIR_PATH / "todo.db"
-    DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
-else:
-    print(
-        "Warning: --project-dir not specified. Defaulting todo.db to script's"
-        " directory parent. Use --project-dir for explicit control.",
-        file=sys.stderr,
+
+def resolve_database_path(args: argparse.Namespace) -> pathlib.Path:
+    """
+    Resolve the todo.db location from parsed CLI arguments.
+
+    Configuration problems are logged (stderr), never printed to stdout: stray
+    stdout corrupts the stdio MCP protocol.
+    """
+    if args.project_dir:
+        project_dir_path = pathlib.Path(args.project_dir).resolve()
+        if not project_dir_path.is_dir():
+            logger.error("Provided project directory does not exist or is not a directory: %s", project_dir_path)
+            raise SystemExit(1)
+        return project_dir_path / "todo.db"
+    logger.warning(
+        "--project-dir not specified. Defaulting todo.db to script's"
+        " directory parent. Use --project-dir for explicit control."
     )
-    DATABASE_FILE = pathlib.Path(__file__).resolve().parent.parent / "todo.db"  # Fallback to old logic
-    DATABASE_URL = f"sqlite:///{DATABASE_FILE.resolve()}"
+    return pathlib.Path(__file__).resolve().parent.parent / "todo.db"  # Fallback to old logic
 
 
-engine = create_engine(DATABASE_URL)
+# --- Database Setup (lazy: importing this module creates nothing) ---
+engine: Optional[Engine] = None
+
+
+def get_engine() -> Engine:
+    """Return the shared engine, creating it on first use.
+
+    Tests patch ``todo_mcp.engine`` directly; a non-None engine is returned as-is.
+    """
+    global engine
+    if engine is None:
+        database_path = resolve_database_path(get_cli_args()).resolve()
+        engine = create_engine(f"sqlite:///{database_path}")
+    return engine
+
 
 # MCP Server instance
 mcp_server = FastMCP("TodoMCP")
@@ -90,7 +111,9 @@ PRIORITY_ORDER = {Priority.HIGH: 1, Priority.MEDIUM: 2, Priority.LOW: 3}
 
 
 # Check if the Todo class already exists to prevent redefinition errors
-if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
+# (TYPE_CHECKING makes mypy analyze the definition branch; at runtime the module-
+# namespace guard reuses the existing classes when the module is re-imported.)
+if TYPE_CHECKING or "_TODO_TABLE_DEFINED" not in globals():
 
     class Todo(SQLModel, table=True, extend_existing=True, sqlite_autoincrement=True):
         """
@@ -131,7 +154,7 @@ if not hasattr(sys.modules.get(__name__), "_TODO_TABLE_DEFINED"):
         created_at: datetime = Field(default_factory=utc_now)
 
     # Mark that the table has been defined
-    sys.modules[__name__]._TODO_TABLE_DEFINED = True
+    globals()["_TODO_TABLE_DEFINED"] = True
 else:
     # If already defined, get the existing class
     Todo = getattr(sys.modules[__name__], "Todo", None)
@@ -142,7 +165,7 @@ def run_migrations(database_engine=None):
     """
     Run database migrations to update existing databases with new schema changes.
     """
-    with Session(database_engine or engine) as session:
+    with Session(database_engine or get_engine()) as session:
         # Create schema_version table if it doesn't exist
         try:
             session.exec(
@@ -154,14 +177,15 @@ def run_migrations(database_engine=None):
             """)
             )
             session.commit()
-        except Exception as e:
-            print(f"Warning: Could not create schema_version table: {e}")
+        except Exception:
+            logger.warning("Could not create schema_version table", exc_info=True)
 
         # Check current schema version
         try:
             result = session.exec(text("SELECT MAX(version) FROM schema_version")).first()
             current_version = result[0] if result and result[0] is not None else 0
         except Exception:
+            logger.warning("Could not read schema_version; assuming version 0", exc_info=True)
             current_version = 0
 
         # Migration 1: Add long_description column
@@ -174,15 +198,14 @@ def run_migrations(database_engine=None):
                 session.commit()
             except Exception:
                 # Column doesn't exist, add it
-                print("Migration 1: Adding long_description column to existing database...")
+                logger.info("Migration 1: Adding long_description column to existing database...")
                 try:
                     session.exec(text("ALTER TABLE todo ADD COLUMN long_description TEXT"))
                     session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (1, datetime('now'))"))
                     session.commit()
-                    print("Successfully added long_description column")
-                except Exception as e:
-                    print(f"Warning: Could not add long_description column: {e}")
-                    pass
+                    logger.info("Successfully added long_description column")
+                except Exception:
+                    logger.warning("Could not add long_description column", exc_info=True)
 
         # Migration 2: Add TodoDependency table for tracking dependencies
         if current_version < 2:
@@ -194,7 +217,7 @@ def run_migrations(database_engine=None):
                 session.commit()
             except Exception:
                 # Table doesn't exist, create it
-                print("Migration 2: Creating TodoDependency table for task dependencies...")
+                logger.info("Migration 2: Creating TodoDependency table for task dependencies...")
                 try:
                     session.exec(
                         text("""
@@ -218,10 +241,9 @@ def run_migrations(database_engine=None):
                     )
                     session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (2, datetime('now'))"))
                     session.commit()
-                    print("Successfully created TodoDependency table")
-                except Exception as e:
-                    print(f"Warning: Could not create TodoDependency table: {e}")
-                    pass
+                    logger.info("Successfully created TodoDependency table")
+                except Exception:
+                    logger.warning("Could not create TodoDependency table", exc_info=True)
 
         # Migration 3: Enforce unique dependency pairs on every database
         if current_version < 3:
@@ -244,9 +266,9 @@ def run_migrations(database_engine=None):
                 )
                 session.exec(text("INSERT INTO schema_version (version, applied_at) VALUES (3, datetime('now'))"))
                 session.commit()
-            except Exception as e:
+            except Exception:
                 session.rollback()
-                print(f"Warning: Could not enforce unique dependency pairs: {e}")
+                logger.warning("Could not enforce unique dependency pairs", exc_info=True)
 
 
 def create_db_and_tables():
@@ -254,7 +276,7 @@ def create_db_and_tables():
     Create the database and tables if they do not exist.
     Also run any necessary migrations for existing databases.
     """
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(get_engine())
     run_migrations()
 
 
@@ -321,11 +343,17 @@ def parse_status_list(value: Optional[Union[str, Status, list[str], list[Status]
     if value is None:
         return None
     if isinstance(value, (str, Status)):
-        return [parse_status(value)]
+        parsed = parse_status(value)
+        if parsed is None:  # value is not None here, so this cannot trigger
+            raise ValueError(f"Invalid status_filter: {value}")
+        return [parsed]
     if isinstance(value, list):
         result = []
         for v in value:
-            result.append(parse_status(v))
+            parsed = parse_status(v)
+            if parsed is None:  # v is not None here, so this cannot trigger
+                raise ValueError(f"Invalid status_filter: {v}")
+            result.append(parsed)
         return result
     raise ValueError(f"Invalid status_filter: {value}")
 
@@ -355,11 +383,17 @@ def parse_priority_list(value: Optional[Union[str, Priority, list[str], list[Pri
     if value is None:
         return None
     if isinstance(value, (str, Priority)):
-        return [parse_priority(value)]
+        parsed = parse_priority(value)
+        if parsed is None:  # value is not None here, so this cannot trigger
+            raise ValueError(f"Invalid priority_filter: {value}")
+        return [parsed]
     if isinstance(value, list):
         result = []
         for v in value:
-            result.append(parse_priority(v))
+            parsed = parse_priority(v)
+            if parsed is None:  # v is not None here, so this cannot trigger
+                raise ValueError(f"Invalid priority_filter: {v}")
+            result.append(parsed)
         return result
     raise ValueError(f"Invalid priority_filter: {value}")
 
@@ -413,7 +447,7 @@ def add_item(
         except ValueError:
             return {"error": f"Invalid date format for due date: '{due_date_str}'. Please use YYYY-MM-DD."}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = Todo(
             description=description,
             long_description=long_description,
@@ -438,7 +472,7 @@ def get_item_by_id(item_id: int) -> Dict[str, Any]:
     Returns:
         dict: The todo item as a dictionary, or an error message if not found.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -467,7 +501,9 @@ def list_items(
             Valid fields: 'priority', 'due_date', 'created_at', 'status', 'description', 'id'.
         tag_filter (str or list[str], optional): Filter by one or more exact tags (AND logic).
         limit (int, optional): Maximum number of items to return. Useful for pagination.
+            Must be a non-negative integer (0 returns an empty page).
         offset (int, optional): Number of items to skip. Use with limit for pagination.
+            Must be a non-negative integer.
 
     Returns:
         dict: {"items": [list_of_items], "total_count": int} on success, or {"error": "message"} on failure.
@@ -502,7 +538,14 @@ def list_items(
         tag_list = parse_tag_list(tag_filter)
     except ValueError as e:
         return {"error": str(e)}
-    with Session(engine) as session:
+    # Reject negative pagination values instead of letting them fall through to
+    # Python slicing, where they silently count from the end of the results
+    # (issue #22). limit=0 stays a valid empty page; offset=0 is the first page.
+    if limit is not None and limit < 0:
+        return {"error": f"Invalid limit: {limit}. Limit must be a non-negative integer."}
+    if offset is not None and offset < 0:
+        return {"error": f"Invalid offset: {offset}. Offset must be a non-negative integer."}
+    with Session(get_engine()) as session:
         statement = select(Todo)
 
         if status_enums:
@@ -524,13 +567,24 @@ def list_items(
             sort_column = getattr(Todo, field_name)
 
             if field_name != "priority":
-                if descending:
+                if field_name == "due_date":
+                    # due_date is the only nullable sort field: undated items sort
+                    # last in both directions, matching the default path's date.max
+                    # semantics (issue #30). The nulls key stays ascending even when
+                    # the date column is descending; created_at breaks ties so the
+                    # ordering is total.
+                    undated_last = col(Todo.due_date).is_(None)
+                    if descending:
+                        statement = statement.order_by(undated_last, sort_column.desc(), col(Todo.created_at).asc())
+                    else:
+                        statement = statement.order_by(undated_last, sort_column.asc(), col(Todo.created_at).asc())
+                elif descending:
                     statement = statement.order_by(sort_column.desc())
                 else:
                     statement = statement.order_by(sort_column.asc())
 
         else:
-            statement = statement.order_by(Todo.due_date.asc(), Todo.created_at.asc())
+            statement = statement.order_by(col(Todo.due_date).asc(), col(Todo.created_at).asc())
 
         results = session.exec(statement).all()
         if tag_list:
@@ -560,7 +614,7 @@ def list_items(
         processed_results = [todo_to_dict(item) for item in results]
 
         # Include total_count in response for pagination metadata
-        response = {"items": processed_results}
+        response: Dict[str, Any] = {"items": processed_results}
         if limit is not None or offset is not None:
             response["total_count"] = total_count
 
@@ -593,7 +647,7 @@ def update_item(
     Returns:
         dict: The updated todo item as a dictionary, or an error/message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -606,13 +660,19 @@ def update_item(
             updated = True
         if status is not None:
             try:
-                todo.status = parse_status(status)
+                parsed_status = parse_status(status)
+                if parsed_status is None:  # status is not None here, so this cannot trigger
+                    raise ValueError(f"Invalid status: '{status}'.")
+                todo.status = parsed_status
             except ValueError as e:
                 return {"error": str(e)}
             updated = True
         if priority is not None:
             try:
-                todo.priority = parse_priority(priority)
+                parsed_priority = parse_priority(priority)
+                if parsed_priority is None:  # priority is not None here, so this cannot trigger
+                    raise ValueError(f"Invalid priority: '{priority}'.")
+                todo.priority = parsed_priority
             except ValueError as e:
                 return {"error": str(e)}
             updated = True
@@ -660,7 +720,9 @@ def mark_item_done(item_id: int) -> Dict[str, Any]:
 def delete_todo_with_dependencies(session: Session, todo: Todo) -> None:
     """Stage deletion of a todo and every dependency that references it."""
     session.exec(
-        delete(TodoDependency).where(or_(TodoDependency.blocker_id == todo.id, TodoDependency.blocked_id == todo.id))
+        delete(TodoDependency).where(
+            or_(col(TodoDependency.blocker_id) == todo.id, col(TodoDependency.blocked_id) == todo.id)
+        )
     )
     session.delete(todo)
 
@@ -673,7 +735,7 @@ def remove_item(item_id: int) -> Dict[str, Any]:
     Returns:
         dict: Message and ID of the removed item, or an error message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -698,7 +760,7 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     if blocker_id == blocked_id:
         return {"error": "A todo item cannot block itself."}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         # Verify both todos exist
         blocker = session.get(Todo, blocker_id)
         if not blocker:
@@ -773,7 +835,7 @@ def remove_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     Returns:
         dict: Success message if removed, or an error message.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         dependency = session.exec(
             select(TodoDependency).where(
                 (TodoDependency.blocker_id == blocker_id) & (TodoDependency.blocked_id == blocked_id)
@@ -800,7 +862,7 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
     Returns:
         dict: List of dependencies with details.
     """
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         if item_id:
             # Get specific item's dependencies
             todo = session.get(Todo, item_id)
@@ -810,14 +872,14 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
             # Items that block this one
             blocking_query = session.exec(
                 select(TodoDependency, Todo)
-                .join(Todo, TodoDependency.blocker_id == Todo.id)
+                .join(Todo, col(TodoDependency.blocker_id) == Todo.id)
                 .where(TodoDependency.blocked_id == item_id)
             ).all()
 
             # Items blocked by this one
             blocked_query = session.exec(
                 select(TodoDependency, Todo)
-                .join(Todo, TodoDependency.blocked_id == Todo.id)
+                .join(Todo, col(TodoDependency.blocked_id) == Todo.id)
                 .where(TodoDependency.blocker_id == item_id)
             ).all()
 
@@ -852,13 +914,22 @@ def list_dependencies(item_id: Optional[int] = None) -> Dict[str, Any]:
                 "blocks": blocked,
             }
         else:
-            # Get all dependencies with manual joining
+            # Two queries total: one for the edges, one batched IN lookup for every
+            # referenced todo (was 2N+1 via per-row session.get — N+1 fixed here).
             all_deps = session.exec(select(TodoDependency)).all()
+            referenced_ids = {dep.blocker_id for dep in all_deps} | {dep.blocked_id for dep in all_deps}
+            todos_by_id: Dict[int, Todo] = {}
+            if referenced_ids:
+                todos_by_id = {
+                    todo.id: todo
+                    for todo in session.exec(select(Todo).where(col(Todo.id).in_(referenced_ids))).all()
+                    if todo.id is not None
+                }
 
             dependencies = []
             for dep in all_deps:
-                blocker = session.get(Todo, dep.blocker_id)
-                blocked_item = session.get(Todo, dep.blocked_id)
+                blocker = todos_by_id.get(dep.blocker_id)
+                blocked_item = todos_by_id.get(dep.blocked_id)
 
                 if blocker and blocked_item:
                     dependencies.append(
@@ -888,24 +959,29 @@ def get_ready_items() -> Dict[str, Any]:
     Returns:
         dict: List of todo items that are not blocked or whose blockers are all done.
     """
-    with Session(engine) as session:
-        # Get all open/in_progress items
-        all_items = session.exec(select(Todo).where(Todo.status.in_([Status.OPEN, Status.IN_PROGRESS]))).all()
+    with Session(get_engine()) as session:
+        # Two queries total: the open/in-progress items, then every incomplete
+        # blocker edge batch-loaded and grouped by blocked item (was 1 + N
+        # per-item queries — N+1 fixed here).
+        all_items = session.exec(select(Todo).where(col(Todo.status).in_([Status.OPEN, Status.IN_PROGRESS]))).all()
+
+        blocker_edges = session.exec(
+            select(TodoDependency, Todo)
+            .join(Todo, col(TodoDependency.blocker_id) == Todo.id)
+            .where(col(Todo.status).not_in([Status.DONE, Status.CANCELLED]))
+        ).all()
+        blockers_by_item: Dict[int, list] = {}
+        for dep, blocker in blocker_edges:
+            blockers_by_item.setdefault(dep.blocked_id, []).append(blocker)
 
         ready_items = []
         blocked_items = []
 
         for item in all_items:
+            if item.id is None:  # unreachable for rows returned by a SELECT
+                continue
             # Check if this item is blocked by any incomplete items
-            blockers = session.exec(
-                select(Todo)
-                .join(TodoDependency, TodoDependency.blocker_id == Todo.id)
-                .where(
-                    (TodoDependency.blocked_id == item.id)
-                    & (Todo.status != Status.DONE)
-                    & (Todo.status != Status.CANCELLED)
-                )
-            ).all()
+            blockers = blockers_by_item.get(item.id, [])
 
             if not blockers:
                 # Not blocked or all blockers are complete
@@ -949,7 +1025,7 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
     if direction not in ["upstream", "downstream", "both"]:
         return {"error": "Direction must be 'upstream', 'downstream', or 'both'"}
 
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         todo = session.get(Todo, item_id)
         if not todo:
             return {"error": f"Todo item with ID {item_id} not found."}
@@ -962,12 +1038,14 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
 
             blockers = session.exec(
                 select(Todo)
-                .join(TodoDependency, TodoDependency.blocker_id == Todo.id)
+                .join(TodoDependency, col(TodoDependency.blocker_id) == Todo.id)
                 .where(TodoDependency.blocked_id == tid)
             ).all()
 
             result = []
             for blocker in blockers:
+                if blocker.id is None:  # unreachable for rows returned by a SELECT
+                    continue
                 result.append(
                     {
                         "id": blocker.id,
@@ -987,12 +1065,14 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
 
             blocked = session.exec(
                 select(Todo)
-                .join(TodoDependency, TodoDependency.blocked_id == Todo.id)
+                .join(TodoDependency, col(TodoDependency.blocked_id) == Todo.id)
                 .where(TodoDependency.blocker_id == tid)
             ).all()
 
             result = []
             for blocked_item in blocked:
+                if blocked_item.id is None:  # unreachable for rows returned by a SELECT
+                    continue
                 result.append(
                     {
                         "id": blocked_item.id,
@@ -1004,7 +1084,7 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
                 )
             return result
 
-        chain = {
+        chain: Dict[str, Any] = {
             "item": {"id": item_id, "description": todo.description, "status": todo.status, "priority": todo.priority}
         }
 
@@ -1321,13 +1401,15 @@ mcp_server.tool()(assistant_workflow_guide)
 
 def main():
     """Entry point for the TodoList MCP server."""
-    if not cli_args.project_dir:
-        print("Error: --project-dir is required when running the server directly.", file=sys.stderr)
+    # Server diagnostics go to stderr: stdout carries the stdio MCP protocol.
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    args = get_cli_args()
+    if not args.project_dir:
+        logger.error("--project-dir is required when running the server directly.")
         print("Usage: todolist-mcp --project-dir /path/to/your/project_root", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Starting TodoMCP server. Database: {DATABASE_FILE.resolve()}")
-    print("Ensure --project-dir is set correctly if not using default.")
+    logger.info("Starting TodoMCP server. Database: %s", resolve_database_path(args).resolve())
     create_db_and_tables()
     mcp_server.run()
 

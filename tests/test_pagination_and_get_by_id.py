@@ -181,6 +181,53 @@ def test_tag_filter_strips_whitespace_and_ands_multiple_tags(temp_db):
     assert [item["id"] for item in list_items(tag_filter=["backend", "security"])["items"]] == [both["id"]]
 
 
+def test_list_items_negative_limit_returns_error(temp_db, sample_todos):
+    # Issue #22: a negative limit used to slice from the end and silently
+    # return a misleading subset; it must be rejected with the error convention.
+    result = list_items(limit=-1)
+
+    assert "error" in result
+    assert "non-negative" in result["error"]
+    assert "items" not in result
+    assert "total_count" not in result
+
+
+def test_list_items_negative_offset_returns_error(temp_db, sample_todos):
+    # Issue #22: a negative offset used to slice from the end of the results.
+    result = list_items(offset=-1)
+
+    assert "error" in result
+    assert "non-negative" in result["error"]
+    assert "items" not in result
+
+
+def test_list_items_negative_offset_rejected_even_with_valid_limit(temp_db, sample_todos):
+    # Issue #22 acceptance: offset=-1 must error, including combined with a valid limit.
+    result = list_items(limit=5, offset=-2)
+
+    assert "error" in result
+    assert "non-negative" in result["error"]
+    assert "items" not in result
+
+
+def test_list_items_zero_limit_is_valid_empty_page(temp_db, sample_todos):
+    # Issue #22 acceptance: limit=0 stays a valid empty page with correct total_count.
+    result = list_items(limit=0)
+
+    assert "error" not in result
+    assert result["items"] == []
+    assert result["total_count"] == 15
+
+
+def test_list_items_zero_offset_returns_first_page(temp_db, sample_todos):
+    # Issue #22 acceptance: offset=0 is the ordinary first page.
+    result = list_items(limit=5, offset=0)
+
+    assert "error" not in result
+    assert len(result["items"]) == 5
+    assert result["total_count"] == 15
+
+
 def test_get_item_by_id_with_all_fields(temp_db):
     # Test get_item_by_id with item that has all fields populated
     result = add_item(
