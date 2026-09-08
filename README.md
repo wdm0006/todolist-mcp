@@ -162,7 +162,7 @@ All tools take snake_case parameter names over MCP (the hyphenated names above a
     - `show_all_statuses` (`bool`, optional): If `True`, show all statuses. Default: `False` (open and in_progress only).
     - `status_filter` (`str` or `list[str]`, optional): Filter by status (`'open'`, `'in_progress'`, `'done'`, `'cancelled'`). A list matches any of the statuses.
     - `priority_filter` (`str` or `list[str]`, optional): Filter by priority (`'high'`, `'medium'`, `'low'`). A list matches any of the priorities.
-    - `sort_by` (`str`, optional): Field to sort by (`'priority'`, `'due_date'`, `'created_at'`, `'status'`, `'description'`, `'id'`). Prefix with `-` for descending (e.g. `'-created_at'`). Under `due_date`, undated items sort last in both directions.
+    - `sort_by` (`str`, optional): Field to sort by (`'priority'`, `'due_date'`, `'created_at'`, `'status'`, `'description'`, `'id'`, `'updated_at'`). Prefix with `-` for descending (e.g. `'-created_at'`). Under `due_date`, undated items sort last in both directions.
     - `tag_filter` (`str` or `list[str]`, optional): Filter by tag. Tags match **exactly, case-insensitively** — this is not a substring search. Multiple tags combine with AND: `["work", "urgent"]` returns only items carrying both tags. Tag lists on items are comma-separated.
     - `limit` (`int`, optional): Maximum number of items to return. Must be non-negative (`0` returns an empty page).
     - `offset` (`int`, optional): Number of items to skip before the first returned. Must be non-negative.
