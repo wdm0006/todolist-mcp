@@ -1048,6 +1048,8 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
             for blocker in blockers:
                 if blocker.id is None:  # unreachable for rows returned by a SELECT
                     continue
+                if blocker.id in visited:  # already listed via another path (reconvergent graph)
+                    continue
                 result.append(
                     {
                         "id": blocker.id,
@@ -1074,6 +1076,8 @@ def get_dependency_chain(item_id: int, direction: str = "both") -> Dict[str, Any
             result = []
             for blocked_item in blocked:
                 if blocked_item.id is None:  # unreachable for rows returned by a SELECT
+                    continue
+                if blocked_item.id in visited:  # already listed via another path (reconvergent graph)
                     continue
                 result.append(
                     {
