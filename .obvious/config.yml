@@ -1,0 +1,5 @@
+# Repo policy for obvious workers.
+# Auto-detected from GitHub repo settings on 2026-09-06.
+defaultBranch: main
+mergeMethod: merge        # repo allows merge, squash, and rebase; viewer default is MERGE
+deleteBranchOnMerge: false
