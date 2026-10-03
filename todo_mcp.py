@@ -19,6 +19,7 @@ import difflib
 from sqlmodel import Field, Session, SQLModel, create_engine, select, col
 from sqlalchemy import Engine, UniqueConstraint, delete, or_, text
 from fastmcp import FastMCP
+from pydantic import NaiveDatetime
 from utc_timestamp import utc_now
 
 logger = logging.getLogger(__name__)
@@ -135,8 +136,8 @@ if TYPE_CHECKING or "_TODO_TABLE_DEFINED" not in globals():
         long_description: Optional[str] = Field(default=None)
         status: Status = Field(default=Status.OPEN, index=True)
         priority: Priority = Field(default=Priority.MEDIUM, index=True)
-        created_at: datetime = Field(default_factory=utc_now, index=True)
-        updated_at: datetime = Field(default_factory=utc_now)
+        created_at: NaiveDatetime = Field(default_factory=utc_now, index=True)
+        updated_at: NaiveDatetime = Field(default_factory=utc_now)
         due_date: Optional[date] = Field(default=None, index=True)
         tags: Optional[str] = Field(default=None, index=True)
 
@@ -151,7 +152,7 @@ if TYPE_CHECKING or "_TODO_TABLE_DEFINED" not in globals():
         id: Optional[int] = Field(default=None, primary_key=True)
         blocker_id: int = Field(foreign_key="todo.id", index=True)
         blocked_id: int = Field(foreign_key="todo.id", index=True)
-        created_at: datetime = Field(default_factory=utc_now)
+        created_at: NaiveDatetime = Field(default_factory=utc_now)
 
     # Mark that the table has been defined
     globals()["_TODO_TABLE_DEFINED"] = True
@@ -451,7 +452,7 @@ def add_item(
         todo = Todo(
             description=description,
             long_description=long_description,
-            priority=priority_enum,
+            priority=priority_enum or Priority.MEDIUM,
             due_date=parsed_due_date,
             tags=tags,
             updated_at=utc_now(),
