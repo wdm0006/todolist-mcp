@@ -6,11 +6,13 @@
 # ]
 # ///
 
+import asyncio
 import enum
+import functools
 import logging
 from datetime import datetime, date
 from functools import lru_cache
-from typing import Optional, Dict, Any, Union, TYPE_CHECKING
+from typing import Optional, Dict, Any, Union, TYPE_CHECKING, Callable, TypeVar
 import pathlib
 import argparse
 import sys
@@ -88,6 +90,23 @@ def get_engine() -> Engine:
 
 # MCP Server instance
 mcp_server = FastMCP("TodoMCP")
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def register_threaded_tool(function: F) -> F:
+    """Register ``function`` as an async tool that runs it in a worker thread; return it unchanged.
+
+    FastMCP 2.x runs synchronous tools inline on the event loop, so blocking database work would
+    stall pings and concurrent requests.
+    """
+
+    @functools.wraps(function)
+    async def run_in_thread(*args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(function, *args, **kwargs)
+
+    mcp_server.tool()(run_in_thread)
+    return function
 
 
 class Status(str, enum.Enum):
@@ -1392,17 +1411,17 @@ and it will become an invaluable project management tool!
 
 
 # --- Register tools with MCP server (explicit registration keeps functions callable) ---
-mcp_server.tool()(add_item)
-mcp_server.tool()(get_item_by_id)
-mcp_server.tool()(list_items)
-mcp_server.tool()(update_item)
-mcp_server.tool()(mark_item_done)
-mcp_server.tool()(remove_item)
-mcp_server.tool()(add_dependency)
-mcp_server.tool()(remove_dependency)
-mcp_server.tool()(list_dependencies)
-mcp_server.tool()(get_ready_items)
-mcp_server.tool()(get_dependency_chain)
+register_threaded_tool(add_item)
+register_threaded_tool(get_item_by_id)
+register_threaded_tool(list_items)
+register_threaded_tool(update_item)
+register_threaded_tool(mark_item_done)
+register_threaded_tool(remove_item)
+register_threaded_tool(add_dependency)
+register_threaded_tool(remove_dependency)
+register_threaded_tool(list_dependencies)
+register_threaded_tool(get_ready_items)
+register_threaded_tool(get_dependency_chain)
 mcp_server.tool()(assistant_workflow_guide)
 
 
