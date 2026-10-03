@@ -4,8 +4,8 @@ VENV_DIR = .venv
 UV = uv
 
 install:
-	$(UV) venv $(VENV_DIR) --seed
-	$(UV) pip install -e ".[dev,web]"
+	test -x $(VENV_DIR)/bin/python || $(UV) venv $(VENV_DIR) --seed
+	$(UV) pip install --python $(VENV_DIR)/bin/python -e ".[dev,web]"
 
 lint: install
 	$(UV) run ruff check --fix .
