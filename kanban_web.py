@@ -511,8 +511,27 @@ HTML_BASE = """
             transition: opacity 0.2s ease;
         }
         
-        .todo-card:hover .card-actions {
+        .todo-card:hover .card-actions,
+        .todo-card:focus-within .card-actions {
             opacity: 1;
+        }
+
+        .todo-card:focus-visible,
+        .btn:focus-visible,
+        .btn-sm:focus-visible,
+        .form-input:focus-visible,
+        .form-select:focus-visible,
+        .form-textarea:focus-visible {
+            outline: 3px solid #ffffff;
+            outline-offset: 2px;
+        }
+
+        .status-message {
+            min-height: 1.25rem;
+            margin-top: 0.5rem;
+            color: #00ccff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
         }
         
         .btn-sm {
@@ -796,9 +815,10 @@ HTML_BASE = """
     
     <!-- Detail View Modal -->
     <div id="detailModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <h2 style="color: #00ff41; font-family: 'Orbitron', monospace; margin: 0;">Todo Details</h2>
+                <h2 id="detailModalTitle"
+                    style="color: #00ff41; font-family: 'Orbitron', monospace; margin: 0;">Todo Details</h2>
                 <button type="button" class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
             </div>
             <div id="detailContent">
@@ -831,9 +851,12 @@ HTML_BASE = """
         }
 
         // Detail modal functions
+        let detailTriggerId = null;
+
         function showDetailModal(todoId) {
             // Prevent event bubbling from card click
             event.stopPropagation();
+            detailTriggerId = todoId;
             
             // Fetch todo details
             fetch(`/todos/${todoId}/details`)
@@ -841,6 +864,7 @@ HTML_BASE = """
                 .then(todo => {
                     populateDetailModal(todo);
                     document.getElementById('detailModal').classList.add('show');
+                    document.getElementById('detailStatus').focus();
                 })
                 .catch(error => {
                     console.error('Failed to fetch todo details:', error);
@@ -849,6 +873,41 @@ HTML_BASE = """
         
         function hideDetailModal() {
             document.getElementById('detailModal').classList.remove('show');
+            const card = document.querySelector(`.todo-card[data-todo-id="${detailTriggerId}"]`);
+            if (card) {
+                card.focus();
+            }
+        }
+
+        // Cards are role="button": Enter/Space open the modal (ignore keys aimed at the Delete button inside)
+        function handleCardKeydown(event, todoId) {
+            if (event.target !== event.currentTarget) {
+                return;
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                showDetailModal(todoId);
+            }
+        }
+
+        function changeTodoStatus(todoId, selectEl) {
+            const newStatus = selectEl.value;
+            const message = document.getElementById('detailStatusMessage');
+            const label = selectEl.options[selectEl.selectedIndex].text;
+            fetch(`/todos/${todoId}/status`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `status=${encodeURIComponent(newStatus)}`
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                message.textContent = `Moved to ${label}.`;
+                htmx.ajax('GET', '/kanban-board', {target: '#kanban-board', swap: 'innerHTML'});
+            }).catch(error => {
+                console.error('Failed to update todo status:', error);
+                message.textContent = 'Could not change status. Try again.';
+            });
         }
         
         function populateDetailModal(todo) {
@@ -866,7 +925,10 @@ HTML_BASE = """
             };
             
             const priorityColor = priorityColors[todo.priority] || '#666666';
-            const statusLabel = statusLabels[todo.status] || todo.status;
+            const statusOptions = Object.keys(statusLabels).map(value =>
+                `<option value="${escapeHtml(value)}"${value === todo.status ? ' selected' : ''}>` +
+                `${escapeHtml(statusLabels[value])}</option>`
+            ).join('');
             
             // Build tags HTML
             let tagsHtml = '';
@@ -916,14 +978,10 @@ HTML_BASE = """
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div>
-                        <div class="form-label">Status:</div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <div style="width: 8px; height: 8px; border-radius: 0; 
-                                         border: 1px solid ${priorityColor}; background: ${priorityColor}; 
-                                         box-shadow: 0 0 5px ${priorityColor};"></div>
-                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                          text-transform: uppercase;">${escapeHtml(statusLabel)}</span>
-                        </div>
+                        <label class="form-label" for="detailStatus">Status:</label>
+                        <select id="detailStatus" class="form-select"
+                                onchange="changeTodoStatus(${Number(todo.id)}, this)">${statusOptions}</select>
+                        <div id="detailStatusMessage" class="status-message" role="status" aria-live="polite"></div>
                     </div>
                     <div>
                         <div class="form-label">Priority:</div>
@@ -1042,6 +1100,12 @@ HTML_BASE = """
             }
         });
         
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && document.getElementById('detailModal').classList.contains('show')) {
+                hideDetailModal();
+            }
+        });
+
         // Close modal when clicking outside
         window.onclick = function(event) {
             const createModal = document.getElementById('createModal');
@@ -1122,7 +1186,10 @@ def generate_kanban_html(session: Session) -> str:
 
             todo_cards += f'''
             <div class="todo-card priority-{todo.priority.value}" data-todo-id="{todo.id}"
-                 onclick="showDetailModal({todo.id})" style="cursor: pointer;">
+                 tabindex="0" role="button"
+                 aria-label="Open details for task #{todo.id}: {html.escape(todo.description)}"
+                 onclick="showDetailModal({todo.id})" onkeydown="handleCardKeydown(event, {todo.id})"
+                 style="cursor: pointer;">
                 <div class="card-header">
                     <div class="card-title">{html.escape(todo.description)}</div>
                     <div class="card-id">#{todo.id}</div>
