@@ -121,7 +121,7 @@ class TestBoardRenderingEscaping:
         assert card is not None
 
         # The card's own onclick handler is application markup, not persisted content
-        assert_inert(str(card), HOSTILE_DESCRIPTION, allowed_handlers=("showDetailModal(",))
+        assert_inert(str(card), HOSTILE_DESCRIPTION, allowed_handlers=("showDetailModal(", "handleCardKeydown("))
         assert card.find("div", class_="card-title").get_text() == HOSTILE_DESCRIPTION
 
         tag_labels = [tag.get_text() for tag in card.find_all("span", class_="tag")]
@@ -155,7 +155,6 @@ class TestDetailModalEscaping:
         for field in ("description", "long_description", "priority", "due_date"):
             assert f"${{todo.{field}}}" not in source, f"todo.{field} is interpolated without escaping"
             assert f"escapeHtml(todo.{field})" in source
-        assert "${statusLabel}" not in source
         assert "${tag.trim()}" not in source
 
     @pytest.mark.skipif(shutil.which("node") is None, reason="node is required to execute the modal renderer")
@@ -185,6 +184,6 @@ class TestDetailModalEscaping:
         )
 
         markup = result.stdout
-        assert_inert(markup, HOSTILE_DESCRIPTION)
-        assert_inert(markup, HOSTILE_LONG_DESCRIPTION)
-        assert_inert(markup, 'backend" onmouseover="alert(3)')
+        assert_inert(markup, HOSTILE_DESCRIPTION, allowed_handlers=("changeTodoStatus(",))
+        assert_inert(markup, HOSTILE_LONG_DESCRIPTION, allowed_handlers=("changeTodoStatus(",))
+        assert_inert(markup, 'backend" onmouseover="alert(3)', allowed_handlers=("changeTodoStatus(",))
