@@ -164,6 +164,7 @@ All tools take snake_case parameter names over MCP (the hyphenated names above a
     - `priority_filter` (`str` or `list[str]`, optional): Filter by priority (`'high'`, `'medium'`, `'low'`). A list matches any of the priorities.
     - `sort_by` (`str`, optional): Field to sort by (`'priority'`, `'due_date'`, `'created_at'`, `'status'`, `'description'`, `'id'`, `'updated_at'`). Prefix with `-` for descending (e.g. `'-created_at'`). Under `due_date`, undated items sort last in both directions.
     - `tag_filter` (`str` or `list[str]`, optional): Filter by tag. Tags match **exactly, case-insensitively** — this is not a substring search. Multiple tags combine with AND: `["work", "urgent"]` returns only items carrying both tags. Tag lists on items are comma-separated.
+    - `search` (`str`, optional): Case-insensitive literal substring matched against description, long description and tags (`%` and `_` are ordinary characters). Combines with the other filters (AND) and applies before `total_count`/pagination. Empty or whitespace-only values are ignored.
     - `limit` (`int`, optional): Maximum number of items to return. Must be non-negative (`0` returns an empty page).
     - `offset` (`int`, optional): Number of items to skip before the first returned. Must be non-negative.
 - **Returns**: `{"items": [list_of_items]}`, or `{"items": [...], "total_count": int}` when `limit` and/or `offset` are used — `total_count` is the number of matching items **before** pagination is applied, so clients can page through the full result set.

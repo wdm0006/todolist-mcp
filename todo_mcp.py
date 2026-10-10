@@ -507,6 +507,7 @@ def list_items(
     tag_filter: Optional[Union[str, list[str]]] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     List todo items with optional filters, sorting, and pagination.
@@ -524,6 +525,9 @@ def list_items(
             Must be a non-negative integer (0 returns an empty page).
         offset (int, optional): Number of items to skip. Use with limit for pagination.
             Must be a non-negative integer.
+        search (str, optional): Case-insensitive literal substring matched against description,
+            long_description and tags (so '%' and '_' are ordinary characters). Combines with the
+            other filters (AND). Empty or whitespace-only values are ignored.
 
     Returns:
         dict: {"items": [list_of_items], "total_count": int} on success, or {"error": "message"} on failure.
@@ -537,6 +541,7 @@ def list_items(
         list_items(priority_filter=["high", "medium"])
         list_items(tag_filter="work")
         list_items(tag_filter=["work", "urgent"])
+        list_items(search="oauth")  # Find tasks mentioning oauth
         list_items(sort_by="-priority")
         list_items(limit=10, offset=20)  # Get items 21-30
         list_items(limit=5)  # Get first 5 items
@@ -611,6 +616,15 @@ def list_items(
         results = session.exec(statement).all()
         if tag_list:
             results = [item for item in results if has_tags(item.tags, tag_list)]
+        if search and search.strip():
+            needle = search.strip().casefold()
+            results = [
+                item
+                for item in results
+                if any(
+                    needle in (field or "").casefold() for field in (item.description, item.long_description, item.tags)
+                )
+            ]
 
         total_count = len(results)
 
@@ -1232,6 +1246,13 @@ list_items(tag_filter="backend")           # All backend work
 list_items(tag_filter="security")          # Security-related tasks
 list_items(tag_filter="bugfix")            # All bug fixes
 list_items(tag_filter=["frontend", "ui"])  # Multiple tags (AND logic)
+```
+
+### Finding Tasks by Content
+Before calling `add_item`, check whether a similar task already exists:
+```
+list_items(search="oauth", show_all_statuses=True)  # Substring of description, long description or tags
+list_items(search="login", priority_filter="high")  # Combines with other filters (AND)
 ```
 
 ## 🏷️ Recommended Tagging Strategy
