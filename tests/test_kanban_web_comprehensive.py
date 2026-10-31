@@ -176,7 +176,9 @@ class TestKanbanWebBasicFunctionality:
         response = client.get("/")
 
         # Check for CSS
-        assert "font-family: 'JetBrains Mono'" in response.text
+        assert "--font-mono: 'JetBrains Mono'" in response.text
+        assert "--font-sans: 'Inter'" in response.text
+        assert "Orbitron" not in response.text
         assert ".kanban-board" in response.text
         assert ".todo-card" in response.text
 

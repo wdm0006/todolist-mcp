@@ -69,448 +69,276 @@ HTML_BASE = """
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --color-canvas: #F8FAFC;
+            --color-surface: #FFFFFF;
+            --color-subtle: #F1F5F9;
+            --color-border: #E2E8F0;
+            --color-text: #0F172A;
+            --color-text-muted: #475569;
+            --color-primary: #4F46E5;
+            --color-primary-hover: #4338CA;
+            --color-on-primary: #FFFFFF;
+            --color-danger: #E11D48;
+            --color-danger-text: #BE123C;
+            --color-warning: #F59E0B;
+            --color-warning-text: #B45309;
+            --color-success: #10B981;
+            --color-success-text: #047857;
+            --color-backdrop: rgba(15, 23, 42, 0.45);
+
+            --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+            --text-xs: 0.75rem;
+            --text-sm: 0.875rem;
+            --text-md: 1.125rem;
+            --text-lg: 1.25rem;
+
+            --space-1: 0.25rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-pill: 999px;
+
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.03);
+            --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
+            --shadow-modal: 0 20px 40px -8px rgba(15, 23, 42, 0.2);
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'JetBrains Mono', 'Courier New', monospace;
-            background: #0a0a0a;
-            background-image: 
-                radial-gradient(circle at 20% 80%, #001a2e 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, #1a0033 0%, transparent 50%),
-                radial-gradient(circle at 40% 40%, #000a1a 0%, transparent 50%);
-            color: #00ff41;
-            line-height: 1.6;
+            font-family: var(--font-sans);
+            background: var(--color-canvas);
+            color: var(--color-text);
+            font-size: var(--text-sm);
+            line-height: 1.5;
             min-height: 100vh;
-            position: relative;
             overflow-x: auto;
         }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                repeating-linear-gradient(
-                    0deg,
-                    transparent,
-                    transparent 2px,
-                    rgba(0, 255, 65, 0.03) 2px,
-                    rgba(0, 255, 65, 0.03) 4px
-                );
-            pointer-events: none;
-            z-index: 1;
-        }
-        
+
         .header {
-            background: linear-gradient(135deg, #001122, #000033);
-            border: 2px solid #00ff41;
-            border-radius: 0;
-            color: #00ff41;
-            padding: 2rem;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            color: var(--color-text);
+            padding: var(--space-6);
             text-align: center;
-            box-shadow: 
-                0 0 20px rgba(0, 255, 65, 0.3),
-                inset 0 0 20px rgba(0, 255, 65, 0.1);
-            position: relative;
-            z-index: 2;
-            margin: 1rem;
-            text-transform: uppercase;
+            box-shadow: var(--shadow-sm);
+            margin: var(--space-4);
         }
-        
-        .header::before {
-            content: '> ';
-            color: #ff0080;
-            font-weight: bold;
-        }
-        
-        .header::after {
-            content: ' <';
-            color: #ff0080;
-            font-weight: bold;
-        }
-        
+
         .header h1 {
-            font-family: 'Orbitron', monospace;
-            font-size: 2.5rem;
-            font-weight: 900;
-            margin-bottom: 0.5rem;
-            text-shadow: 
-                0 0 10px #00ff41,
-                0 0 20px #00ff41,
-                0 0 30px #00ff41;
-            letter-spacing: 0.1em;
+            font-size: var(--text-lg);
+            font-weight: 600;
+            margin-bottom: var(--space-1);
         }
-        
+
         .header p {
-            opacity: 0.8;
-            font-size: 1rem;
-            color: #00ccff;
-            text-shadow: 0 0 5px #00ccff;
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
             font-weight: 400;
         }
-        
+
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 2rem;
-            position: relative;
-            z-index: 2;
+            padding: var(--space-8);
         }
-        
+
         .controls {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-            gap: 1rem;
-            padding: 1rem;
-            background: rgba(0, 20, 40, 0.8);
-            border: 1px solid #00ff41;
-            border-radius: 0;
-            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+            margin-bottom: var(--space-8);
+            gap: var(--space-4);
+            padding: var(--space-4);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
         }
-        
+
         .btn {
-            background: linear-gradient(135deg, #001a33, #002244);
-            color: #00ff41;
-            border: 2px solid #00ff41;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0;
-            font-family: 'JetBrains Mono', monospace;
+            background: var(--color-primary);
+            color: var(--color-on-primary);
+            border: 1px solid var(--color-primary);
+            padding: var(--space-2) var(--space-4);
+            border-radius: var(--radius-md);
+            font-family: var(--font-sans);
+            font-size: var(--text-sm);
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
             text-decoration: none;
             display: inline-block;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            position: relative;
-            overflow: hidden;
         }
-        
-        .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
-            transition: left 0.5s;
-        }
-        
+
         .btn:hover {
-            background: linear-gradient(135deg, #002244, #003355);
-            box-shadow: 
-                0 0 20px rgba(0, 255, 65, 0.5),
-                inset 0 0 20px rgba(0, 255, 65, 0.1);
-            transform: translateY(-2px);
-            color: #ffffff;
+            background: var(--color-primary-hover);
+            border-color: var(--color-primary-hover);
         }
-        
-        .btn:hover::before {
-            left: 100%;
-        }
-        
+
         .btn-secondary {
-            background: linear-gradient(135deg, #330066, #440088);
-            border-color: #ff0080;
-            color: #ff0080;
+            background: var(--color-surface);
+            border-color: var(--color-border);
+            color: var(--color-text);
         }
-        
+
         .btn-secondary:hover {
-            background: linear-gradient(135deg, #440088, #5500aa);
-            box-shadow: 
-                0 0 20px rgba(255, 0, 128, 0.5),
-                inset 0 0 20px rgba(255, 0, 128, 0.1);
-            color: #ffffff;
+            background: var(--color-subtle);
+            border-color: var(--color-border);
         }
-        
+
         .btn-danger {
-            background: linear-gradient(135deg, #330000, #440000);
-            border-color: #ff0040;
-            color: #ff0040;
+            background: var(--color-surface);
+            border-color: var(--color-danger);
+            color: var(--color-danger-text);
         }
-        
+
         .btn-danger:hover {
-            background: linear-gradient(135deg, #440000, #550000);
-            box-shadow: 
-                0 0 20px rgba(255, 0, 64, 0.5),
-                inset 0 0 20px rgba(255, 0, 64, 0.1);
-            color: #ffffff;
+            background: var(--color-subtle);
+            border-color: var(--color-danger);
         }
-        
+
         .kanban-board {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 2rem;
+            gap: var(--space-6);
             min-height: 600px;
         }
-        
+
         .kanban-column {
-            background: linear-gradient(135deg, rgba(0, 20, 40, 0.9), rgba(0, 30, 60, 0.8));
-            border: 2px solid #00ff41;
-            border-radius: 0;
-            padding: 1.5rem;
-            box-shadow: 
-                0 0 20px rgba(0, 255, 65, 0.3),
-                inset 0 0 20px rgba(0, 255, 65, 0.05);
-            position: relative;
+            background: var(--color-subtle);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
         }
-        
-        .kanban-column::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #ff0080, #00ff41, #00ccff);
-            animation: pulse 2s ease-in-out infinite alternate;
-        }
-        
+
         .column-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #00ff41;
-            position: relative;
+            margin-bottom: var(--space-4);
         }
-        
-        .column-header::before {
-            content: '[';
-            color: #ff0080;
-            font-weight: bold;
-            margin-right: 0.5rem;
-        }
-        
-        .column-header::after {
-            content: ']';
-            color: #ff0080;
-            font-weight: bold;
-            margin-left: 0.5rem;
-        }
-        
+
         .column-title {
-            font-family: 'Orbitron', monospace;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #00ff41;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--color-text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            text-shadow: 0 0 10px #00ff41;
+            letter-spacing: 0.06em;
         }
-        
+
         .item-count {
-            background: linear-gradient(135deg, #ff0080, #ff0040);
-            color: #ffffff;
-            padding: 0.25rem 0.75rem;
-            border: 1px solid #ff0080;
-            border-radius: 0;
-            font-size: 0.875rem;
-            font-weight: 700;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 0 10px rgba(255, 0, 128, 0.5);
-            text-shadow: 0 0 5px #ffffff;
+            background: var(--color-surface);
+            color: var(--color-text-muted);
+            padding: 0 var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-pill);
+            font-size: var(--text-xs);
+            font-weight: 500;
         }
-        
+
         .todo-card {
-            background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 20, 40, 0.6));
-            border: 1px solid #00ccff;
-            border-radius: 0;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            box-shadow: 
-                0 0 15px rgba(0, 204, 255, 0.3),
-                inset 0 0 15px rgba(0, 204, 255, 0.1);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-3) var(--space-4);
+            margin-bottom: var(--space-3);
+            box-shadow: var(--shadow-sm);
             cursor: grab;
-            transition: all 0.3s ease;
+            transition: box-shadow 0.15s ease;
             position: relative;
-            font-family: 'JetBrains Mono', monospace;
         }
-        
-        .todo-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            border: 1px solid transparent;
-            background: linear-gradient(45deg, #00ccff, #ff0080, #00ff41) border-box;
-            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-            -webkit-mask-composite: exclude;
-            mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-            mask-composite: exclude;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
+
         .todo-card:hover {
-            box-shadow: 
-                0 0 25px rgba(0, 204, 255, 0.6),
-                inset 0 0 25px rgba(0, 204, 255, 0.2);
-            transform: translateY(-2px) scale(1.02);
+            box-shadow: var(--shadow-hover);
         }
-        
-        .todo-card:hover::before {
-            opacity: 1;
-        }
-        
-        .todo-card.priority-high {
-            border-left: 4px solid #ff0040;
-            box-shadow: 
-                0 0 15px rgba(255, 0, 64, 0.4),
-                inset 0 0 15px rgba(255, 0, 64, 0.1);
-        }
-        
-        .todo-card.priority-medium {
-            border-left: 4px solid #ffaa00;
-            box-shadow: 
-                0 0 15px rgba(255, 170, 0, 0.4),
-                inset 0 0 15px rgba(255, 170, 0, 0.1);
-        }
-        
-        .todo-card.priority-low {
-            border-left: 4px solid #00ff41;
-            box-shadow: 
-                0 0 15px rgba(0, 255, 65, 0.4),
-                inset 0 0 15px rgba(0, 255, 65, 0.1);
-        }
-        
+
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 0.75rem;
+            margin-bottom: var(--space-3);
         }
-        
+
         .card-title {
             font-weight: 500;
-            color: #00ff41;
-            font-size: 0.9rem;
+            color: var(--color-text);
+            font-size: var(--text-sm);
             line-height: 1.4;
             flex: 1;
-            margin-right: 0.5rem;
-            text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);
+            margin-right: var(--space-2);
         }
-        
+
         .card-id {
-            color: #00ccff;
-            font-size: 0.75rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 500;
-            text-shadow: 0 0 3px rgba(0, 204, 255, 0.5);
+            color: var(--color-text-muted);
+            font-size: var(--text-xs);
+            font-family: var(--font-mono);
         }
-        
+
         .card-tags {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.25rem;
-            margin-bottom: 0.75rem;
+            gap: var(--space-1);
+            margin-bottom: var(--space-3);
         }
-        
+
         .tag {
-            padding: 0.125rem 0.5rem;
-            border-radius: 0;
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: #000;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border: 1px solid;
-            box-shadow: 0 0 5px rgba(0, 255, 65, 0.3);
-            position: relative;
+            padding: 0 var(--space-2);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+            background-color: var(--color-subtle);
+            border: 1px solid var(--color-border);
+            font-family: var(--font-mono);
         }
-        
-        .tag::before {
-            content: '[';
-            margin-right: 0.2em;
-            color: inherit;
-        }
-        
-        .tag::after {
-            content: ']';
-            margin-left: 0.2em;
-            color: inherit;
-        }
-        
-        .tag-backend { background-color: #00ff41; border-color: #00ff41; color: #000; }
-        .tag-frontend { background-color: #00ccff; border-color: #00ccff; color: #000; }
-        .tag-security { background-color: #ff0040; border-color: #ff0040; color: #fff; }
-        .tag-feature { background-color: #00ff80; border-color: #00ff80; color: #000; }
-        .tag-bugfix { background-color: #ffaa00; border-color: #ffaa00; color: #000; }
-        .tag-enhancement { background-color: #ff0080; border-color: #ff0080; color: #fff; }
-        .tag-testing { background-color: #80ff00; border-color: #80ff00; color: #000; }
-        .tag-docs { background-color: #666666; border-color: #666666; color: #fff; }
-        .tag-api { background-color: #0080ff; border-color: #0080ff; color: #fff; }
-        .tag-ui { background-color: #ff8000; border-color: #ff8000; color: #000; }
-        .tag-database { background-color: #40ff00; border-color: #40ff00; color: #000; }
-        .tag-performance { background-color: #ffff00; border-color: #ffff00; color: #000; }
-        .tag-refactor { background-color: #8000ff; border-color: #8000ff; color: #fff; }
-        .tag:not([class*="tag-"]) { background-color: #666666; border-color: #666666; color: #fff; }
-        
+
         .card-footer {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .priority-indicator {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            font-size: 0.75rem;
-            color: #00ccff;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            gap: var(--space-2);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
         }
-        
+
         .priority-dot {
             width: 8px;
             height: 8px;
-            border-radius: 0;
-            border: 1px solid;
-            box-shadow: 0 0 5px;
+            border-radius: var(--radius-pill);
         }
-        
-        .priority-dot.high { 
-            background-color: #ff0040; 
-            border-color: #ff0040; 
-            box-shadow: 0 0 5px #ff0040;
-        }
-        .priority-dot.medium { 
-            background-color: #ffaa00; 
-            border-color: #ffaa00; 
-            box-shadow: 0 0 5px #ffaa00;
-        }
-        .priority-dot.low { 
-            background-color: #00ff41; 
-            border-color: #00ff41; 
-            box-shadow: 0 0 5px #00ff41;
-        }
-        
+
+        .priority-dot.high { background-color: var(--color-danger); }
+        .priority-dot.medium { background-color: var(--color-warning); }
+        .priority-dot.low { background-color: var(--color-success); }
+
         .card-actions {
             display: flex;
-            gap: 0.5rem;
+            gap: var(--space-2);
             opacity: 0;
             transition: opacity 0.2s ease;
         }
-        
+
         .todo-card:hover .card-actions,
         .todo-card:focus-within .card-actions {
             opacity: 1;
@@ -522,52 +350,37 @@ HTML_BASE = """
         .form-input:focus-visible,
         .form-select:focus-visible,
         .form-textarea:focus-visible {
-            outline: 3px solid #ffffff;
+            outline: 2px solid var(--color-primary);
             outline-offset: 2px;
         }
 
         .status-message {
             min-height: 1.25rem;
-            margin-top: 0.5rem;
-            color: #00ccff;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
+            margin-top: var(--space-2);
+            color: var(--color-text-muted);
+            font-size: var(--text-xs);
         }
-        
+
         .btn-sm {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-            border-radius: 0;
-            background: linear-gradient(135deg, #001122, #002244);
-            color: #00ff41;
-            border: 1px solid #00ff41;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            box-shadow: 0 0 5px rgba(0, 255, 65, 0.2);
+            padding: var(--space-1) var(--space-2);
+            font-size: var(--text-xs);
+            background: var(--color-surface);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
         }
-        
+
         .btn-sm:hover {
-            background: linear-gradient(135deg, #002244, #003366);
-            box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
-            color: #ffffff;
+            background: var(--color-subtle);
+            border-color: var(--color-border);
+            color: var(--color-danger-text);
         }
-        
+
         .due-date {
-            color: #ff0080;
-            font-size: 0.75rem;
-            margin-bottom: 0.5rem;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            text-shadow: 0 0 3px rgba(255, 0, 128, 0.5);
+            color: var(--color-text-muted);
+            font-size: var(--text-xs);
+            margin-bottom: var(--space-2);
         }
-        
-        .due-date::before {
-            content: '> ';
-            color: #00ccff;
-        }
-        
+
         .modal {
             display: none;
             position: fixed;
@@ -575,167 +388,94 @@ HTML_BASE = """
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: var(--color-backdrop);
             z-index: 1000;
         }
-        
+
         .modal.show {
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        
+
         .modal-content {
-            background: linear-gradient(135deg, rgba(0, 10, 20, 0.95), rgba(0, 20, 40, 0.9));
-            border: 2px solid #00ff41;
-            border-radius: 0;
-            padding: 2rem;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
             max-width: 600px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 
-                0 0 30px rgba(0, 255, 65, 0.3),
-                inset 0 0 30px rgba(0, 255, 65, 0.1);
-            position: relative;
+            box-shadow: var(--shadow-modal);
         }
-        
-        .modal-content::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #ff0080, #00ff41, #00ccff);
-            animation: pulse 2s ease-in-out infinite alternate;
+
+        .modal-content h2 {
+            font-size: var(--text-md);
+            font-weight: 600;
+            margin-bottom: var(--space-4);
         }
-        
+
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: var(--space-4);
         }
-        
+
         .form-label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-2);
+            font-size: var(--text-xs);
             font-weight: 500;
-            color: #00ff41;
-            font-family: 'JetBrains Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);
+            color: var(--color-text-muted);
         }
-        
-        .form-label::before {
-            content: '> ';
-            color: #ff0080;
-        }
-        
-        .form-input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #00ccff;
-            border-radius: 0;
-            font-size: 0.875rem;
-            background: rgba(0, 10, 20, 0.8);
-            color: #00ff41;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 0 10px rgba(0, 204, 255, 0.2);
-        }
-        
-        .form-input:focus {
-            outline: none;
-            border-color: #00ff41;
-            box-shadow: 
-                0 0 15px rgba(0, 255, 65, 0.4),
-                inset 0 0 10px rgba(0, 255, 65, 0.1);
-        }
-        
-        .form-select {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #00ccff;
-            border-radius: 0;
-            font-size: 0.875rem;
-            background: rgba(0, 10, 20, 0.8);
-            color: #00ff41;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 0 10px rgba(0, 204, 255, 0.2);
-        }
-        
-        .form-select:focus {
-            outline: none;
-            border-color: #00ff41;
-            box-shadow: 
-                0 0 15px rgba(0, 255, 65, 0.4),
-                inset 0 0 10px rgba(0, 255, 65, 0.1);
-        }
-        
+
+        .form-input,
+        .form-select,
         .form-textarea {
             width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #00ccff;
-            border-radius: 0;
-            font-size: 0.875rem;
+            padding: var(--space-2) var(--space-3);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            background: var(--color-surface);
+            color: var(--color-text);
+            font-family: var(--font-sans);
+        }
+
+        .form-textarea {
             min-height: 100px;
             resize: vertical;
-            background: rgba(0, 10, 20, 0.8);
-            color: #00ff41;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 0 10px rgba(0, 204, 255, 0.2);
         }
-        
+
+        .form-input:focus,
+        .form-select:focus,
         .form-textarea:focus {
-            outline: none;
-            border-color: #00ff41;
-            box-shadow: 
-                0 0 15px rgba(0, 255, 65, 0.4),
-                inset 0 0 10px rgba(0, 255, 65, 0.1);
+            outline: 2px solid var(--color-primary);
+            outline-offset: 0;
+            border-color: var(--color-primary);
         }
-        
+
         .sortable-ghost {
             opacity: 0.5;
-            border: 2px dashed #00ff41;
-            box-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
+            border: 1px dashed var(--color-primary);
         }
-        
+
         .sortable-chosen {
-            transform: rotate(2deg) scale(1.05);
-            box-shadow: 
-                0 0 25px rgba(0, 255, 65, 0.6),
-                inset 0 0 25px rgba(0, 255, 65, 0.2);
+            box-shadow: var(--shadow-hover);
         }
-        
-        @keyframes pulse {
-            0% { opacity: 0.8; }
-            100% { opacity: 1; }
-        }
-        
-        @keyframes glitch {
-            0%, 100% { transform: translateX(0); }
-            20% { transform: translateX(-2px); }
-            40% { transform: translateX(2px); }
-            60% { transform: translateX(-1px); }
-            80% { transform: translateX(1px); }
-        }
-        
-        .header h1:hover {
-            animation: glitch 0.3s ease-in-out;
-        }
-        
+
         @media (max-width: 1024px) {
             .kanban-board {
                 grid-template-columns: repeat(2, 1fr);
             }
         }
-        
+
         @media (max-width: 640px) {
             .kanban-board {
                 grid-template-columns: 1fr;
             }
-            
+
             .container {
-                padding: 1rem;
+                padding: var(--space-4);
             }
         }
     </style>
@@ -818,7 +558,7 @@ HTML_BASE = """
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <h2 id="detailModalTitle"
-                    style="color: #00ff41; font-family: 'Orbitron', monospace; margin: 0;">Todo Details</h2>
+                    style="margin: 0;">Todo Details</h2>
                 <button type="button" class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
             </div>
             <div id="detailContent">
@@ -912,9 +652,9 @@ HTML_BASE = """
         
         function populateDetailModal(todo) {
             const priorityColors = {
-                'high': '#ff0040',
-                'medium': '#ffaa00', 
-                'low': '#00ff41'
+                'high': 'var(--color-danger)',
+                'medium': 'var(--color-warning)',
+                'low': 'var(--color-success)'
             };
             
             const statusLabels = {
@@ -924,7 +664,7 @@ HTML_BASE = """
                 'cancelled': 'Cancelled'
             };
             
-            const priorityColor = priorityColors[todo.priority] || '#666666';
+            const priorityColor = priorityColors[todo.priority] || 'var(--color-text-muted)';
             const statusOptions = Object.keys(statusLabels).map(value =>
                 `<option value="${escapeHtml(value)}"${value === todo.status ? ' selected' : ''}>` +
                 `${escapeHtml(statusLabels[value])}</option>`
@@ -950,8 +690,9 @@ HTML_BASE = """
                 longDescHtml = `
                     <div style="margin-bottom: 1rem;">
                         <div class="form-label">Detailed Description:</div>
-                        <div style="background: rgba(0, 10, 20, 0.8); border: 2px solid #00ccff; 
-                                     padding: 1rem; color: #00ff41; font-family: 'JetBrains Mono', monospace; 
+                        <div style="background: var(--color-subtle); border: 1px solid var(--color-border);
+                                     border-radius: var(--radius-md); padding: var(--space-4);
+                                     color: var(--color-text); font-family: var(--font-sans);
                                      line-height: 1.5; white-space: pre-wrap;">${longDescText}</div>
                     </div>
                 `;
@@ -963,15 +704,15 @@ HTML_BASE = """
                 const dueDateText = escapeHtml(todo.due_date);
                 dueDateHtml = `<div style="margin-bottom: 1rem;">
                     <div class="form-label">Due Date:</div>
-                    <div style="color: #ff0080; font-family: 'JetBrains Mono', monospace;">${dueDateText}</div>
+                    <div style="color: var(--color-text-muted);">${dueDateText}</div>
                 </div>`;
             }
             
             const content = `
                 <div style="margin-bottom: 1rem;">
                     <div class="form-label">Task:</div>
-                    <div style="color: #00ff41; font-size: 1.1rem; font-weight: 500; 
-                                 text-shadow: 0 0 5px rgba(0, 255, 65, 0.3);">${escapeHtml(todo.description)}</div>
+                    <div style="color: var(--color-text); font-size: 1.1rem; font-weight: 500;">
+                        ${escapeHtml(todo.description)}</div>
                 </div>
                 
                 ${longDescHtml}
@@ -986,11 +727,9 @@ HTML_BASE = """
                     <div>
                         <div class="form-label">Priority:</div>
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <div style="width: 8px; height: 8px; border-radius: 0; 
-                                         border: 1px solid ${priorityColor}; background: ${priorityColor}; 
-                                         box-shadow: 0 0 5px ${priorityColor};"></div>
-                            <span style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                          text-transform: uppercase;">${escapeHtml(todo.priority)}</span>
+                            <div style="width: 8px; height: 8px; border-radius: 999px; 
+                                         background: ${priorityColor};"></div>
+                            <span style="color: var(--color-text-muted);">${escapeHtml(todo.priority)}</span>
                         </div>
                     </div>
                 </div>
@@ -999,23 +738,22 @@ HTML_BASE = """
                 ${dueDateHtml}
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; 
-                             font-size: 0.875rem; color: #666; margin-top: 1.5rem;">
+                             font-size: 0.875rem; color: var(--color-text-muted); margin-top: 1.5rem;">
                     <div>
                         <div class="form-label">Created:</div>
-                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                     font-size: 0.8rem;">${new Date(todo.created_at).toLocaleString()}</div>
+                        <div style="color: var(--color-text-muted); font-size: 0.8rem;">
+                            ${new Date(todo.created_at).toLocaleString()}</div>
                     </div>
                     <div>
                         <div class="form-label">Updated:</div>
-                        <div style="color: #00ccff; font-family: 'JetBrains Mono', monospace; 
-                                     font-size: 0.8rem;">
+                        <div style="color: var(--color-text-muted); font-size: 0.8rem;">
                             ${new Date(todo.updated_at).toLocaleString()}
                         </div>
                     </div>
                 </div>
                 
-                <div style="text-align: center; margin-top: 1.5rem; color: #00ccff; 
-                             font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                <div style="text-align: center; margin-top: 1.5rem; color: var(--color-text-muted); 
+                             font-family: var(--font-mono); font-size: 0.8rem;">
                     ID: #${todo.id}
                 </div>
             `;
