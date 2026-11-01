@@ -117,7 +117,7 @@ uv run kanban_web.py --project-dir /path/to/project --host 0.0.0.0 --port 3000
 - **🎨 Retro Hacker Theme**: Cyberpunk aesthetic with neon colors, terminal fonts, and glowing effects
 - **📋 Drag & Drop Kanban**: Visual swimlanes with smooth drag-and-drop between statuses
 - **🏷️ Smart Tags**: Colorful, bracketed tags with category-specific styling
-- **✏️ Modal Forms**: Beautiful create/edit modals with terminal-style inputs
+- **✏️ Modal Forms**: Create modal, plus an Edit button in the task details modal to change description, detailed description, priority, tags and due date (status keeps its own control)
 - **⚡ Priority System**: Glowing priority indicators with color coding
 - **🔄 Real-time Updates**: HTMX-powered dynamic updates for seamless interaction
 - **🗑️ Safe Operations**: Delete confirmations and proper error handling

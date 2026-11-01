@@ -454,6 +454,16 @@ HTML_BASE = """
             border-color: var(--color-primary);
         }
 
+        .form-error {
+            color: var(--color-danger-text, var(--color-danger));
+            font-size: var(--text-sm);
+            margin-bottom: var(--space-3);
+        }
+
+        .form-error:empty {
+            display: none;
+        }
+
         .sortable-ghost {
             opacity: 0.5;
             border: 1px dashed var(--color-primary);
@@ -592,6 +602,7 @@ HTML_BASE = """
 
         // Detail modal functions
         let detailTriggerId = null;
+        let detailTodo = null;
 
         function showDetailModal(todoId) {
             // Prevent event bubbling from card click
@@ -602,6 +613,7 @@ HTML_BASE = """
             fetch(`/todos/${todoId}/details`)
                 .then(response => response.json())
                 .then(todo => {
+                    detailTodo = todo;
                     populateDetailModal(todo);
                     document.getElementById('detailModal').classList.add('show');
                     document.getElementById('detailStatus').focus();
@@ -650,6 +662,88 @@ HTML_BASE = """
             });
         }
         
+        function showEditForm() {
+            const todo = detailTodo;
+            const priorities = ['high', 'medium', 'low'];
+            const priorityOptions = priorities.map(value =>
+                `<option value="${escapeHtml(value)}"${value === todo.priority ? ' selected' : ''}>` +
+                `${escapeHtml(value.charAt(0).toUpperCase() + value.slice(1))}</option>`
+            ).join('');
+            const longDescText = escapeHtml(todo.long_description);
+            const tagsText = escapeHtml(todo.tags);
+            const dueText = escapeHtml(todo.due_date);
+            const descText = escapeHtml(todo.description);
+            document.getElementById('detailContent').innerHTML = `
+                <form id="editForm" onsubmit="submitEdit(event)" novalidate>
+                    <div id="editError" class="form-error" role="alert"></div>
+                    <div class="form-group">
+                        <label class="form-label" for="editDescription">Description (required)</label>
+                        <textarea id="editDescription" name="description" class="form-textarea"
+                                  required>${descText}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editLongDescription">Detailed Description</label>
+                        <textarea id="editLongDescription" name="long_description"
+                                  class="form-textarea">${longDescText}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editPriority">Priority</label>
+                        <select id="editPriority" name="priority" class="form-select">${priorityOptions}</select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editTags">Tags (comma-separated)</label>
+                        <input type="text" id="editTags" name="tags" class="form-input" value="${tagsText}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editDueDate">Due Date</label>
+                        <input type="date" id="editDueDate" name="due_date" class="form-input" value="${dueText}">
+                    </div>
+                    <div style="display: flex; gap: var(--space-4); justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
+                        <button type="submit" id="editSave" class="btn">Save</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('editDescription').focus();
+        }
+
+        function cancelEdit() {
+            populateDetailModal(detailTodo);
+            document.getElementById('detailEditButton').focus();
+        }
+
+        function submitEdit(event) {
+            event.preventDefault();
+            const form = document.getElementById('editForm');
+            const saveButton = document.getElementById('editSave');
+            const errorBox = document.getElementById('editError');
+            if (saveButton.disabled) {
+                return;
+            }
+            saveButton.disabled = true;
+            errorBox.textContent = '';
+            const body = new URLSearchParams(new FormData(form)).toString();
+            fetch(`/todos/${detailTodo.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: body
+            }).then(response => response.json().catch(() => ({})).then(data => {
+                if (!response.ok) {
+                    const fallback = 'Please check the fields and try again.';
+                    const detail = typeof data.detail === 'string' ? data.detail : fallback;
+                    throw new Error(detail);
+                }
+                detailTodo = data;
+                populateDetailModal(data);
+                htmx.ajax('GET', '/kanban-board', {target: '#kanban-board', swap: 'innerHTML'});
+                document.getElementById('detailEditButton').focus();
+            })).catch(error => {
+                saveButton.disabled = false;
+                errorBox.textContent = `Could not save: ${error.message}`;
+                document.getElementById('editDescription').focus();
+            });
+        }
+
         function populateDetailModal(todo) {
             const priorityColors = {
                 'high': 'var(--color-danger)',
@@ -709,6 +803,10 @@ HTML_BASE = """
             }
             
             const content = `
+                <div style="display: flex; justify-content: flex-end; margin-bottom: var(--space-2);">
+                    <button type="button" id="detailEditButton" class="btn btn-secondary"
+                            onclick="showEditForm()">Edit</button>
+                </div>
                 <div style="margin-bottom: 1rem;">
                     <div class="form-label">Task:</div>
                     <div style="color: var(--color-text); font-size: 1.1rem; font-weight: 500;">
@@ -1049,15 +1147,8 @@ async def delete_todo(todo_id: int, session: Session = Depends(get_session)):
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.get("/todos/{todo_id}/details")
-async def get_todo_details(todo_id: int, session: Session = Depends(get_session)):
-    """Get detailed information about a specific todo"""
-    todo = session.get(Todo, todo_id)
-    if not todo:
-        raise HTTPException(status_code=404, detail="Todo not found")
-
-    # Convert to dict with proper date formatting
-    todo_dict = {
+def todo_to_dict(todo: Todo) -> dict:
+    return {
         "id": todo.id,
         "description": todo.description,
         "long_description": todo.long_description,
@@ -1069,9 +1160,58 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
         "updated_at": todo.updated_at.isoformat() if todo.updated_at else None,
     }
 
+
+@app.get("/todos/{todo_id}/details")
+async def get_todo_details(todo_id: int, session: Session = Depends(get_session)):
+    """Get detailed information about a specific todo"""
+    todo = session.get(Todo, todo_id)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
     from fastapi.responses import JSONResponse
 
-    return JSONResponse(todo_dict)
+    return JSONResponse(todo_to_dict(todo))
+
+
+@app.put("/todos/{todo_id}")
+async def update_todo_fields(
+    todo_id: int,
+    description: str = Form(...),
+    priority: Priority = Form(...),
+    long_description: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    due_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    """Replace the editable fields of a todo; blank optional fields are cleared. Status is untouched."""
+    todo = session.get(Todo, todo_id)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    description = description.strip()
+    if not description:
+        raise HTTPException(status_code=422, detail="Description cannot be empty.")
+
+    due_date_obj = None
+    if due_date and due_date.strip():
+        try:
+            due_date_obj = datetime.strptime(due_date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Due date must be a valid date in YYYY-MM-DD format.") from None
+
+    todo.description = description
+    todo.priority = priority
+    todo.long_description = long_description if long_description and long_description.strip() else None
+    todo.tags = tags.strip() if tags and tags.strip() else None
+    todo.due_date = due_date_obj
+    todo.updated_at = utc_now()
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)
+
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(todo_to_dict(todo))
 
 
 def setup_database(project_dir: Optional[str] = None):
