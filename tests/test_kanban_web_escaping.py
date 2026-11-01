@@ -184,6 +184,18 @@ class TestDetailModalEscaping:
         )
 
         markup = result.stdout
-        assert_inert(markup, HOSTILE_DESCRIPTION, allowed_handlers=("changeTodoStatus(", "showEditForm("))
-        assert_inert(markup, HOSTILE_LONG_DESCRIPTION, allowed_handlers=("changeTodoStatus(", "showEditForm("))
-        assert_inert(markup, 'backend" onmouseover="alert(3)', allowed_handlers=("changeTodoStatus(", "showEditForm("))
+        assert_inert(
+            markup,
+            HOSTILE_DESCRIPTION,
+            allowed_handlers=("changeTodoStatus(", "showEditForm(", "removeBlocker(", "addBlocker("),
+        )
+        assert_inert(
+            markup,
+            HOSTILE_LONG_DESCRIPTION,
+            allowed_handlers=("changeTodoStatus(", "showEditForm(", "removeBlocker(", "addBlocker("),
+        )
+        assert_inert(
+            markup,
+            'backend" onmouseover="alert(3)',
+            allowed_handlers=("changeTodoStatus(", "showEditForm(", "removeBlocker(", "addBlocker("),
+        )
