@@ -131,14 +131,11 @@ HTML_BASE = """
         }
 
         .header {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            color: var(--color-text);
-            padding: var(--space-6);
-            text-align: center;
-            box-shadow: var(--shadow-sm);
-            margin: var(--space-4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--space-6);
+            margin-bottom: var(--space-6);
         }
 
         .header h1 {
@@ -156,20 +153,26 @@ HTML_BASE = """
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: var(--space-8);
+            padding: var(--space-6) var(--space-8);
         }
 
         .controls {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: var(--space-8);
-            gap: var(--space-4);
-            padding: var(--space-4);
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-sm);
+            justify-content: flex-end;
+            gap: var(--space-3);
+            flex-shrink: 0;
+        }
+
+        .priority-filter {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .priority-filter .form-label {
+            margin-bottom: 0;
+            font-size: var(--text-xs);
         }
 
         .btn {
@@ -500,6 +503,17 @@ HTML_BASE = """
         }
 
         @media (max-width: 1024px) {
+            .header {
+                flex-wrap: wrap;
+                gap: var(--space-4);
+            }
+
+            .controls {
+                flex-wrap: wrap;
+                justify-content: flex-start;
+                flex-shrink: 1;
+            }
+
             .kanban-board {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -517,22 +531,16 @@ HTML_BASE = """
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Todo Kanban Board</h1>
-        <p>Modern interface for AI assistant project management</p>
-    </div>
-    
     <div class="container">
-        <div class="controls">
+        <header class="header">
             <div>
-                <button class="btn" onclick="showCreateModal()">Create New Todo</button>
+                <h1>Todo Kanban Board</h1>
+                <p>Modern interface for AI assistant project management</p>
             </div>
-            <div style="display: flex; gap: 1rem; align-items: center;">
-                <div>
-                    <label class="form-label" style="margin-bottom: 0.25rem; font-size: 0.75rem;">
-                        Filter by Priority:
-                    </label>
-                    <select id="priorityFilter" class="form-select" 
+            <div class="controls">
+                <div class="priority-filter">
+                    <label for="priorityFilter" class="form-label">Filter by Priority:</label>
+                    <select id="priorityFilter" class="form-select"
                             style="width: 150px; padding: 0.5rem;" onchange="filterByPriority()">
                         <option value="">All Priorities</option>
                         <option value="high">🔴 High</option>
@@ -541,9 +549,10 @@ HTML_BASE = """
                     </select>
                 </div>
                 <button class="btn btn-secondary" onclick="location.reload()">Refresh</button>
+                <button class="btn" onclick="showCreateModal()">Create New Todo</button>
             </div>
-        </div>
-        
+        </header>
+
         <div class="kanban-board" id="kanban-board">
             {{ kanban_content | safe }}
         </div>
