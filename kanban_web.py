@@ -230,7 +230,7 @@ HTML_BASE = """
 
         .column-header {
             display: flex;
-            justify-content: space-between;
+            gap: var(--space-2);
             align-items: center;
             margin-bottom: var(--space-4);
         }
@@ -283,9 +283,12 @@ HTML_BASE = """
             line-height: 1.4;
             flex: 1;
             margin-right: var(--space-2);
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
         .card-id {
+            flex-shrink: 0;
             color: var(--color-text-muted);
             font-size: var(--text-xs);
             font-family: var(--font-mono);
@@ -299,6 +302,8 @@ HTML_BASE = """
         }
 
         .tag {
+            max-width: 100%;
+            overflow-wrap: anywhere;
             padding: 0 var(--space-2);
             border-radius: var(--radius-sm);
             font-size: var(--text-xs);
@@ -312,6 +317,10 @@ HTML_BASE = """
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+            padding-top: var(--space-2);
+            border-top: 1px solid var(--color-border);
         }
 
         .priority-indicator {
@@ -322,7 +331,16 @@ HTML_BASE = """
             color: var(--color-text-muted);
         }
 
+        .card-footer .priority-indicator {
+            margin-left: auto;
+        }
+
+        .priority-indicator.high { color: var(--color-danger-text); }
+        .priority-indicator.medium { color: var(--color-warning-text); }
+        .priority-indicator.low { color: var(--color-success-text); }
+
         .priority-dot {
+            flex-shrink: 0;
             width: 8px;
             height: 8px;
             border-radius: var(--radius-pill);
@@ -378,7 +396,15 @@ HTML_BASE = """
         .due-date {
             color: var(--color-text-muted);
             font-size: var(--text-xs);
-            margin-bottom: var(--space-2);
+            display: flex;
+            align-items: center;
+            gap: var(--space-1);
+        }
+
+        .due-date svg {
+            width: var(--space-4);
+            height: var(--space-4);
+            flex-shrink: 0;
         }
 
         .modal {
@@ -986,6 +1012,8 @@ def generate_kanban_html(session: Session) -> str:
     for status, config in status_config.items():
         todo_cards = ""
         for todo in todos_by_status[status]:
+            todo_id = html.escape(str(todo.id))
+            priority = html.escape(todo.priority.value)
             tags_html = ""
             if todo.tags:
                 tags = [tag.strip() for tag in todo.tags.split(",")]
@@ -1011,37 +1039,44 @@ def generate_kanban_html(session: Session) -> str:
                         ]
                         else ""
                     )
-                    tag_elements.append(f'<span class="tag {tag_class}">{html.escape(tag)}</span>')
+                    tag_elements.append(f'<span class="tag {html.escape(tag_class)}">{html.escape(tag)}</span>')
                 if len(tags) > 5:
-                    tag_elements.append(f'<span class="tag">+{len(tags) - 5}</span>')
+                    tag_elements.append(f'<span class="tag">+{html.escape(str(len(tags) - 5))}</span>')
                 tags_html = f'<div class="card-tags">{"".join(tag_elements)}</div>'
 
             due_date_html = ""
             if todo.due_date:
-                due_date_html = f'<div class="due-date">Due: {todo.due_date}</div>'
+                due_date_html = f"""<div class="due-date">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                         aria-hidden="true" focusable="false">
+                        <rect x="3" y="5" width="18" height="16" rx="2" />
+                        <path d="M16 3v4M8 3v4M3 11h18" />
+                    </svg>
+                    <span>Due: {html.escape(str(todo.due_date))}</span>
+                </div>"""
 
             todo_cards += f'''
-            <div class="todo-card priority-{todo.priority.value}" data-todo-id="{todo.id}"
+            <div class="todo-card priority-{priority}" data-todo-id="{todo_id}"
                  tabindex="0" role="button"
-                 aria-label="Open details for task #{todo.id}: {html.escape(todo.description)}"
-                 onclick="showDetailModal({todo.id})" onkeydown="handleCardKeydown(event, {todo.id})"
+                 aria-label="Open details for task #{todo_id}: {html.escape(todo.description)}"
+                 onclick="showDetailModal({todo_id})" onkeydown="handleCardKeydown(event, {todo_id})"
                  style="cursor: pointer;">
                 <div class="card-header">
                     <div class="card-title">{html.escape(todo.description)}</div>
-                    <div class="card-id">#{todo.id}</div>
+                    <div class="card-id">#{todo_id}</div>
                 </div>
                 {tags_html}
-                {due_date_html}
                 <div class="card-footer">
-                    <div class="priority-indicator">
-                        <div class="priority-dot {todo.priority.value}"></div>
-                        <span>{todo.priority.value.title()} Priority</span>
+                    {due_date_html}
+                    <div class="priority-indicator {priority}">
+                        <span class="priority-dot {priority}" aria-hidden="true"></span>
+                        <span>{html.escape(todo.priority.value.title())} Priority</span>
                     </div>
-                    <div class="card-actions">
-                        <button class="btn btn-sm" hx-delete="/todos/{todo.id}" 
-                                hx-target="#kanban-board" hx-swap="innerHTML" 
-                                hx-confirm="Delete this todo?">Delete</button>
-                    </div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-sm" hx-delete="/todos/{todo_id}"
+                            hx-target="#kanban-board" hx-swap="innerHTML"
+                            hx-confirm="Delete this todo?">Delete</button>
                 </div>
             </div>
             '''
@@ -1049,10 +1084,10 @@ def generate_kanban_html(session: Session) -> str:
         kanban_html += f'''
         <div class="kanban-column">
             <div class="column-header">
-                <h2 class="column-title">{config["title"]}</h2>
-                <span class="item-count">{len(todos_by_status[status])}</span>
+                <h2 class="column-title">{html.escape(config["title"])}</h2>
+                <span class="item-count">{html.escape(str(len(todos_by_status[status])))}</span>
             </div>
-            <div class="todo-list" data-status="{status.value}">
+            <div class="todo-list" data-status="{html.escape(status.value)}">
                 {todo_cards}
             </div>
         </div>
