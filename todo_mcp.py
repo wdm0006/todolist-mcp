@@ -782,6 +782,53 @@ def remove_item(item_id: int) -> Dict[str, Any]:
         return {"message": f"Removed todo item #{item_id}: '{item_description}'", "id": item_id, "status": "removed"}
 
 
+class DependencyRejected(Exception):
+    """A proposed dependency edge failed validation; ``kind`` is ``"not_found"`` or ``"invalid"``."""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+def check_new_dependency(session: Session, blocker_id: int, blocked_id: int) -> tuple[Todo, Todo]:
+    """Return (blocker, blocked), or raise DependencyRejected unless blocker_id -> blocked_id is a valid new edge."""
+    if blocker_id == blocked_id:
+        raise DependencyRejected("invalid", "A todo item cannot block itself.")
+
+    blocker = session.get(Todo, blocker_id)
+    if not blocker:
+        raise DependencyRejected("not_found", f"Todo item with ID {blocker_id} (blocker) not found.")
+    blocked = session.get(Todo, blocked_id)
+    if not blocked:
+        raise DependencyRejected("not_found", f"Todo item with ID {blocked_id} (blocked) not found.")
+
+    existing = session.exec(
+        select(TodoDependency).where(
+            (TodoDependency.blocker_id == blocker_id) & (TodoDependency.blocked_id == blocked_id)
+        )
+    ).first()
+    if existing:
+        raise DependencyRejected("invalid", f"Dependency already exists: #{blocker_id} blocks #{blocked_id}")
+
+    # If blocked_id already reaches blocker_id along blocker->blocked edges, the new edge closes a loop.
+    visited: set[int] = set()
+    stack = [blocked_id]
+    while stack:
+        current = stack.pop()
+        if current == blocker_id:
+            raise DependencyRejected(
+                "invalid",
+                f"Adding this dependency would create a circular dependency: "
+                f"#{blocked_id} already blocks #{blocker_id} (directly or transitively).",
+            )
+        if current in visited:
+            continue
+        visited.add(current)
+        stack.extend(session.exec(select(TodoDependency.blocked_id).where(TodoDependency.blocker_id == current)).all())
+    return blocker, blocked
+
+
 def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     """
     Create a dependency between two todo items where one blocks another.
@@ -793,50 +840,11 @@ def add_dependency(blocker_id: int, blocked_id: int) -> Dict[str, Any]:
     Returns:
         dict: Success message with dependency details, or an error message.
     """
-    if blocker_id == blocked_id:
-        return {"error": "A todo item cannot block itself."}
-
     with Session(get_engine()) as session:
-        # Verify both todos exist
-        blocker = session.get(Todo, blocker_id)
-        if not blocker:
-            return {"error": f"Todo item with ID {blocker_id} (blocker) not found."}
-
-        blocked = session.get(Todo, blocked_id)
-        if not blocked:
-            return {"error": f"Todo item with ID {blocked_id} (blocked) not found."}
-
-        # Check if dependency already exists
-        existing = session.exec(
-            select(TodoDependency).where(
-                (TodoDependency.blocker_id == blocker_id) & (TodoDependency.blocked_id == blocked_id)
-            )
-        ).first()
-
-        if existing:
-            return {"error": f"Dependency already exists: #{blocker_id} blocks #{blocked_id}"}
-
-        # Reject edges that would create a cycle: if blocked_id already reaches
-        # blocker_id by following existing blocker->blocked edges, then adding
-        # blocker_id -> blocked_id closes a loop.
-        visited: set[int] = set()
-        stack = [blocked_id]
-        while stack:
-            current = stack.pop()
-            if current == blocker_id:
-                return {
-                    "error": (
-                        f"Adding this dependency would create a circular dependency: "
-                        f"#{blocked_id} already blocks #{blocker_id} (directly or transitively)."
-                    )
-                }
-            if current in visited:
-                continue
-            visited.add(current)
-            downstream = session.exec(
-                select(TodoDependency.blocked_id).where(TodoDependency.blocker_id == current)
-            ).all()
-            stack.extend(downstream)
+        try:
+            blocker, blocked = check_new_dependency(session, blocker_id, blocked_id)
+        except DependencyRejected as rejection:
+            return {"error": rejection.message}
 
         # Create the dependency
         dependency = TodoDependency(blocker_id=blocker_id, blocked_id=blocked_id, created_at=utc_now())

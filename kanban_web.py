@@ -39,7 +39,9 @@ from todo_mcp import (
     Priority,
     Status,
     Todo,
+    DependencyRejected,
     TodoDependency as TodoDependency,
+    check_new_dependency,
     delete_todo_with_dependencies,
     run_migrations,
 )
@@ -779,6 +781,55 @@ HTML_BASE = """
             });
         }
 
+        function refreshDetail(todoId, message) {
+            return fetch(`/todos/${todoId}/details`)
+                .then(response => response.json())
+                .then(todo => {
+                    detailTodo = todo;
+                    populateDetailModal(todo);
+                    const status = document.getElementById('detailDependencyMessage');
+                    status.textContent = message;
+                    const picker = document.getElementById('blockerPicker');
+                    if (picker) {
+                        picker.focus();
+                    }
+                });
+        }
+
+        function dependencyRequest(todoId, url, options, successMessage) {
+            const status = document.getElementById('detailDependencyMessage');
+            fetch(url, options).then(response => {
+                if (response.ok) {
+                    return refreshDetail(todoId, successMessage);
+                }
+                return response.json().then(body => {
+                    status.textContent = typeof body.detail === 'string'
+                        ? body.detail : 'Could not update dependencies.';
+                });
+            }).catch(error => {
+                console.error('Failed to update dependencies:', error);
+                status.textContent = 'Could not update dependencies. Try again.';
+            });
+        }
+
+        function addBlocker(todoId) {
+            const picker = document.getElementById('blockerPicker');
+            if (!picker.value) {
+                document.getElementById('detailDependencyMessage').textContent = 'Choose a blocking task first.';
+                return;
+            }
+            dependencyRequest(todoId, `/todos/${todoId}/dependencies`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `blocker_id=${encodeURIComponent(picker.value)}`
+            }, 'Blocker added.');
+        }
+
+        function removeBlocker(todoId, blockerId) {
+            dependencyRequest(todoId, `/todos/${todoId}/dependencies/${blockerId}`, {method: 'DELETE'},
+                `Removed blocker #${blockerId}.`);
+        }
+
         function populateDetailModal(todo) {
             const priorityColors = {
                 'high': 'var(--color-danger)',
@@ -837,20 +888,38 @@ HTML_BASE = """
                 </div>`;
             }
             
-            const dependencyList = (items) => {
+            const dependencyList = (items, removable) => {
                 if (!items || items.length === 0) {
                     return `<div style="color: var(--color-text-muted);">None</div>`;
                 }
                 const rows = items.map(item =>
                     `<li><span style="font-family: var(--font-mono);">#${Number(item.id)}</span> ` +
                     `${escapeHtml(item.description)} ` +
-                    `<span style="color: var(--color-text-muted);">(${escapeHtml(item.status)})</span></li>`
+                    `<span style="color: var(--color-text-muted);">(${escapeHtml(item.status)})</span>` +
+                    (removable
+                        ? ` <button type="button" class="btn btn-secondary"` +
+                          ` aria-label="Remove blocker #${Number(item.id)}"` +
+                          ` onclick="removeBlocker(${Number(todo.id)}, ${Number(item.id)})">Remove</button>`
+                        : '') +
+                    `</li>`
                 ).join('');
                 return `<ul style="margin: 0; padding-left: 1.25rem;">${rows}</ul>`;
             };
+            const blockerOptions = `<option value="">Select a task…</option>` +
+                (todo.blocker_candidates || []).map(item =>
+                    `<option value="${Number(item.id)}">#${Number(item.id)} ${escapeHtml(item.description)}</option>`
+                ).join('');
             const dependenciesHtml = `<div style="margin-bottom: 1rem;">
                     <div class="form-label">Blocked by:</div>
-                    ${dependencyList(todo.blocked_by)}
+                    ${dependencyList(todo.blocked_by, true)}
+                    <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
+                        <label class="form-label" for="blockerPicker"
+                               style="margin: 0; white-space: nowrap;">Add blocker:</label>
+                        <select id="blockerPicker" class="form-select">${blockerOptions}</select>
+                        <button type="button" class="btn btn-secondary"
+                                onclick="addBlocker(${Number(todo.id)})">Add</button>
+                    </div>
+                    <div id="detailDependencyMessage" class="status-message" role="status" aria-live="polite"></div>
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <div class="form-label">Blocks:</div>
@@ -1254,8 +1323,47 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
     ).all()
     details["blocked_by"] = [dependency_summary(t) for t in blocked_by_rows]
     details["blocks"] = [dependency_summary(t) for t in blocks_rows]
+    already_blocking = {t.id for t in blocked_by_rows}
+    candidates = session.exec(select(Todo).order_by(Todo.id)).all()  # type: ignore[arg-type]
+    details["blocker_candidates"] = [
+        dependency_summary(t) for t in candidates if t.id != todo_id and t.id not in already_blocking
+    ]
 
     return JSONResponse(details)
+
+
+@app.post("/todos/{todo_id}/dependencies")
+async def add_todo_dependency(todo_id: int, blocker_id: int = Form(...), session: Session = Depends(get_session)):
+    """Make blocker_id block todo_id, using the validation shared with the MCP add_dependency tool."""
+    try:
+        check_new_dependency(session, blocker_id, todo_id)
+    except DependencyRejected as rejection:
+        status_code = 404 if rejection.kind == "not_found" else 422
+        raise HTTPException(status_code=status_code, detail=rejection.message) from None
+
+    session.add(TodoDependency(blocker_id=blocker_id, blocked_id=todo_id, created_at=utc_now()))
+    session.commit()
+
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse({"success": True, "blocker_id": blocker_id, "blocked_id": todo_id}, status_code=201)
+
+
+@app.delete("/todos/{todo_id}/dependencies/{blocker_id}")
+async def remove_todo_dependency(todo_id: int, blocker_id: int, session: Session = Depends(get_session)):
+    """Remove the edge where blocker_id blocks todo_id."""
+    dependency = session.exec(
+        select(TodoDependency).where((TodoDependency.blocker_id == blocker_id) & (TodoDependency.blocked_id == todo_id))
+    ).first()
+    if not dependency:
+        raise HTTPException(status_code=404, detail=f"No dependency found where #{blocker_id} blocks #{todo_id}")
+
+    session.delete(dependency)
+    session.commit()
+
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse({"success": True})
 
 
 @app.put("/todos/{todo_id}")
