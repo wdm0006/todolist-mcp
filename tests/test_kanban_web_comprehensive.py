@@ -500,6 +500,8 @@ class TestUIRendering:
         for due_date in due_dates:
             assert "Due:" in due_date.text
             assert "2024-" in due_date.text
+            assert due_date.parent.get("class") == ["card-footer"]
+            assert due_date.find("svg")["aria-hidden"] == "true"
 
     def test_priority_indicators(self, test_client, sample_todos):
         """Test priority indicator rendering"""
@@ -516,6 +518,12 @@ class TestUIRendering:
         assert len(high_dots) == 2  # 2 high priority todos
         assert len(medium_dots) == 2  # 2 medium priority todos
         assert len(low_dots) == 1  # 1 low priority todo
+
+        for priority, dots in (("High", high_dots), ("Medium", medium_dots), ("Low", low_dots)):
+            for dot in dots:
+                assert dot["aria-hidden"] == "true"
+                assert dot.parent.get_text(strip=True) == f"{priority} Priority"
+                assert dot.parent.parent.get("class") == ["card-footer"]
 
     def test_column_counts(self, test_client, sample_todos):
         """Test that column counts are accurate"""
