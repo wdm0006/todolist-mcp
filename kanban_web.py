@@ -424,6 +424,8 @@ HTML_BASE = """
             height: 100%;
             background: var(--color-backdrop);
             z-index: 1000;
+            -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
         }
 
         .modal.show {
@@ -436,18 +438,110 @@ HTML_BASE = """
             background: var(--color-surface);
             border: 1px solid var(--color-border);
             border-radius: var(--radius-lg);
-            padding: var(--space-6);
+            padding: 0;
             max-width: 600px;
             width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             box-shadow: var(--shadow-modal);
         }
 
-        .modal-content h2 {
+        .modal-header,
+        .modal-body,
+        .modal-footer {
+            padding: var(--space-4) var(--space-6);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-body {
+            overflow-y: auto;
+            flex: 1 1 auto;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: var(--space-3);
+            justify-content: flex-end;
+            border-top: 1px solid var(--color-border);
+            background: var(--color-canvas);
+        }
+
+        .modal-header h2 {
             font-size: var(--text-md);
             font-weight: 600;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .modal-detail {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1 1 auto;
+        }
+
+        .modal-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1 1 auto;
+        }
+
+        .detail-id {
+            display: inline-block;
+            margin-bottom: var(--space-1);
+            padding: 0 var(--space-2);
+            background: var(--color-subtle);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+
+        .detail-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-4);
+            padding: var(--space-4);
             margin-bottom: var(--space-4);
+            background: var(--color-canvas);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+        }
+
+        .detail-meta .wide {
+            grid-column: 1 / -1;
+        }
+
+        .detail-value {
+            color: var(--color-text);
+            overflow-wrap: anywhere;
+        }
+
+        .detail-section {
+            margin-bottom: var(--space-4);
+        }
+
+        .detail-text {
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text);
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 640px) {
+            .detail-meta {
+                grid-template-columns: 1fr;
+            }
         }
 
         .form-group {
@@ -557,9 +651,10 @@ HTML_BASE = """
     
     <!-- Create Todo Modal -->
     <div id="createModal" class="modal">
-        <div class="modal-content">
-            <h2>Create New Todo</h2>
-            <form hx-post="/todos" hx-target="#kanban-board" hx-swap="innerHTML">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
+            <form class="modal-form" hx-post="/todos" hx-target="#kanban-board" hx-swap="innerHTML">
+                <div class="modal-header"><h2 id="createModalTitle">Create New Todo</h2></div>
+                <div class="modal-body">
                 <div class="form-group">
                     <label class="form-label">Description</label>
                     <textarea name="description" class="form-input form-textarea" required 
@@ -587,7 +682,8 @@ HTML_BASE = """
                     <label class="form-label">Due Date</label>
                     <input type="date" name="due_date" class="form-input">
                 </div>
-                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                </div>
+                <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="hideCreateModal()">Cancel</button>
                     <button type="submit" class="btn" onclick="hideCreateModal()">Create Todo</button>
                 </div>
@@ -598,13 +694,11 @@ HTML_BASE = """
     <!-- Detail View Modal -->
     <div id="detailModal" class="modal">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <h2 id="detailModalTitle"
-                    style="margin: 0;">Todo Details</h2>
-                <button type="button" class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
-            </div>
-            <div id="detailContent">
+            <div id="detailContent" class="modal-detail">
                 <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
             </div>
         </div>
     </div>
@@ -706,7 +800,9 @@ HTML_BASE = """
             const dueText = escapeHtml(todo.due_date);
             const descText = escapeHtml(todo.description);
             document.getElementById('detailContent').innerHTML = `
-                <form id="editForm" onsubmit="submitEdit(event)" novalidate>
+                <div class="modal-header"><h2 id="detailModalTitle">Edit #${Number(todo.id)}</h2></div>
+                <form id="editForm" class="modal-form" onsubmit="submitEdit(event)" novalidate>
+                    <div class="modal-body">
                     <div id="editError" class="form-error" role="alert"></div>
                     <div class="form-group">
                         <label class="form-label" for="editDescription">Description (required)</label>
@@ -730,7 +826,8 @@ HTML_BASE = """
                         <label class="form-label" for="editDueDate">Due Date</label>
                         <input type="date" id="editDueDate" name="due_date" class="form-input" value="${dueText}">
                     </div>
-                    <div style="display: flex; gap: var(--space-4); justify-content: flex-end;">
+                    </div>
+                    <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
                         <button type="submit" id="editSave" class="btn">Save</button>
                     </div>
@@ -845,44 +942,36 @@ HTML_BASE = """
                 `${escapeHtml(statusLabels[value])}</option>`
             ).join('');
             
-            // Build tags HTML
             let tagsHtml = '';
             if (todo.tags) {
-                const tags = todo.tags.split(',');
-                const tagElements = tags.map(tag =>
+                const tagElements = todo.tags.split(',').map(tag =>
                     `<span class="tag tag-${escapeHtml(tag.trim().toLowerCase())}">${escapeHtml(tag.trim())}</span>`
                 ).join('');
-                tagsHtml = `<div style="margin-bottom: 1rem;">
-                    <div class="form-label">Tags:</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">${tagElements}</div>
+                tagsHtml = `<div class="wide">
+                    <div class="form-label">Tags</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">${tagElements}</div>
                 </div>`;
             }
-            
-            // Build long description HTML
+
             let longDescHtml = '';
             if (todo.long_description) {
                 const longDescText = escapeHtml(todo.long_description);
                 longDescHtml = `
-                    <div style="margin-bottom: 1rem;">
-                        <div class="form-label">Detailed Description:</div>
-                        <div style="background: var(--color-subtle); border: 1px solid var(--color-border);
-                                     border-radius: var(--radius-md); padding: var(--space-4);
-                                     color: var(--color-text); font-family: var(--font-sans);
-                                     line-height: 1.5; white-space: pre-wrap;">${longDescText}</div>
+                    <div class="detail-section">
+                        <div class="form-label">Detailed Description</div>
+                        <div class="detail-text">${longDescText}</div>
                     </div>
                 `;
             }
-            
-            // Build due date HTML
+
             let dueDateHtml = '';
             if (todo.due_date) {
-                const dueDateText = escapeHtml(todo.due_date);
-                dueDateHtml = `<div style="margin-bottom: 1rem;">
-                    <div class="form-label">Due Date:</div>
-                    <div style="color: var(--color-text-muted);">${dueDateText}</div>
+                dueDateHtml = `<div>
+                    <div class="form-label">Due Date</div>
+                    <div class="detail-value">${escapeHtml(todo.due_date)}</div>
                 </div>`;
             }
-            
+
             const dependencyList = (items, removable) => {
                 if (!items || items.length === 0) {
                     return `<div style="color: var(--color-text-muted);">None</div>`;
@@ -904,78 +993,68 @@ HTML_BASE = """
                 (todo.blocker_candidates || []).map(item =>
                     `<option value="${Number(item.id)}">#${Number(item.id)} ${escapeHtml(item.description)}</option>`
                 ).join('');
-            const dependenciesHtml = `<div style="margin-bottom: 1rem;">
-                    <div class="form-label">Blocked by:</div>
+            const dependenciesHtml = `<div class="detail-section">
+                    <div class="form-label">Blocked by</div>
                     ${dependencyList(todo.blocked_by, true)}
                     <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
                         <label class="form-label" for="blockerPicker"
-                               style="margin: 0; white-space: nowrap;">Add blocker:</label>
+                               style="margin: 0; white-space: nowrap;">Add blocker</label>
                         <select id="blockerPicker" class="form-select">${blockerOptions}</select>
                         <button type="button" class="btn btn-secondary"
                                 onclick="addBlocker(${Number(todo.id)})">Add</button>
                     </div>
                     <div id="detailDependencyMessage" class="status-message" role="status" aria-live="polite"></div>
                 </div>
-                <div style="margin-bottom: 1rem;">
-                    <div class="form-label">Blocks:</div>
+                <div class="detail-section">
+                    <div class="form-label">Blocks</div>
                     ${dependencyList(todo.blocks)}
                 </div>`;
 
             const content = `
-                <div style="display: flex; justify-content: flex-end; margin-bottom: var(--space-2);">
-                    <button type="button" id="detailEditButton" class="btn btn-secondary"
-                            onclick="showEditForm()">Edit</button>
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <div class="form-label">Task:</div>
-                    <div style="color: var(--color-text); font-size: 1.1rem; font-weight: 500;">
-                        ${escapeHtml(todo.description)}</div>
-                </div>
-                
-                ${longDescHtml}
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; gap: var(--space-4);">
                     <div>
-                        <label class="form-label" for="detailStatus">Status:</label>
-                        <select id="detailStatus" class="form-select"
-                                onchange="changeTodoStatus(${Number(todo.id)}, this)">${statusOptions}</select>
-                        <div id="detailStatusMessage" class="status-message" role="status" aria-live="polite"></div>
+                        <span class="detail-id">#${Number(todo.id)}</span>
+                        <h2 id="detailModalTitle">${escapeHtml(todo.description)}</h2>
                     </div>
                     <div>
-                        <div class="form-label">Priority:</div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <div style="width: 8px; height: 8px; border-radius: 999px; 
-                                         background: ${priorityColor};"></div>
-                            <span style="color: var(--color-text-muted);">${escapeHtml(todo.priority)}</span>
+                        <button type="button" id="detailEditButton" class="btn btn-secondary"
+                                onclick="showEditForm()">Edit</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="detail-meta">
+                        <div>
+                            <label class="form-label" for="detailStatus">Status</label>
+                            <select id="detailStatus" class="form-select"
+                                    onchange="changeTodoStatus(${Number(todo.id)}, this)">${statusOptions}</select>
+                            <div id="detailStatusMessage" class="status-message" role="status"
+                                 aria-live="polite"></div>
+                        </div>
+                        <div>
+                            <div class="form-label">Priority</div>
+                            <div style="display: flex; align-items: center; gap: var(--space-2);">
+                                <span style="width: 8px; height: 8px; border-radius: var(--radius-pill);
+                                             background: ${priorityColor};"></span>
+                                <span class="detail-value"
+                                      style="text-transform: capitalize;">${escapeHtml(todo.priority)}</span>
+                            </div>
+                        </div>
+                        ${tagsHtml}
+                        ${dueDateHtml}
+                        <div>
+                            <div class="form-label">Created</div>
+                            <div class="detail-value">${new Date(todo.created_at).toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <div class="form-label">Updated</div>
+                            <div class="detail-value">${new Date(todo.updated_at).toLocaleString()}</div>
                         </div>
                     </div>
-                </div>
-                
-                ${tagsHtml}
-                ${dueDateHtml}
-                ${dependenciesHtml}
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; 
-                             font-size: 0.875rem; color: var(--color-text-muted); margin-top: 1.5rem;">
-                    <div>
-                        <div class="form-label">Created:</div>
-                        <div style="color: var(--color-text-muted); font-size: 0.8rem;">
-                            ${new Date(todo.created_at).toLocaleString()}</div>
-                    </div>
-                    <div>
-                        <div class="form-label">Updated:</div>
-                        <div style="color: var(--color-text-muted); font-size: 0.8rem;">
-                            ${new Date(todo.updated_at).toLocaleString()}
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="text-align: center; margin-top: 1.5rem; color: var(--color-text-muted); 
-                             font-family: var(--font-mono); font-size: 0.8rem;">
-                    ID: #${todo.id}
+                    ${longDescHtml}
+                    ${dependenciesHtml}
                 </div>
             `;
-            
+
             document.getElementById('detailContent').innerHTML = content;
         }
         
