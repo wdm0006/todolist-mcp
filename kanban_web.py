@@ -172,6 +172,10 @@ HTML_BASE = """
             gap: var(--space-2);
         }
 
+        .priority-filter .form-select {
+            width: 150px;
+        }
+
         .priority-filter .form-label {
             margin-bottom: 0;
             font-size: var(--text-xs);
@@ -610,13 +614,51 @@ HTML_BASE = """
             }
         }
 
+        @media (hover: none) {
+            .card-actions {
+                opacity: 1;
+            }
+        }
+
         @media (max-width: 640px) {
             .kanban-board {
                 grid-template-columns: 1fr;
+                min-height: 0;
             }
 
             .container {
                 padding: var(--space-4);
+            }
+
+            .controls {
+                width: 100%;
+            }
+
+            .priority-filter {
+                flex: 1 1 100%;
+            }
+
+            .priority-filter .form-select {
+                flex: 1;
+                width: auto;
+                min-width: 0;
+            }
+
+            .controls .btn {
+                flex: 1 1 auto;
+                min-height: 44px;
+                text-align: center;
+            }
+
+            .modal-content {
+                width: calc(100% - var(--space-4));
+                max-height: calc(100vh - var(--space-4));
+            }
+
+            .modal-header,
+            .modal-body,
+            .modal-footer {
+                padding: var(--space-3) var(--space-4);
             }
         }
     </style>
@@ -632,7 +674,7 @@ HTML_BASE = """
                 <div class="priority-filter">
                     <label for="priorityFilter" class="form-label">Filter by Priority:</label>
                     <select id="priorityFilter" class="form-select"
-                            style="width: 150px; padding: 0.5rem;" onchange="filterByPriority()">
+                            onchange="filterByPriority()">
                         <option value="">All Priorities</option>
                         <option value="high">🔴 High</option>
                         <option value="medium">🟡 Medium</option>
