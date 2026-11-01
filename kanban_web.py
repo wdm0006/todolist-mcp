@@ -802,6 +802,26 @@ HTML_BASE = """
                 </div>`;
             }
             
+            const dependencyList = (items) => {
+                if (!items || items.length === 0) {
+                    return `<div style="color: var(--color-text-muted);">None</div>`;
+                }
+                const rows = items.map(item =>
+                    `<li><span style="font-family: var(--font-mono);">#${Number(item.id)}</span> ` +
+                    `${escapeHtml(item.description)} ` +
+                    `<span style="color: var(--color-text-muted);">(${escapeHtml(item.status)})</span></li>`
+                ).join('');
+                return `<ul style="margin: 0; padding-left: 1.25rem;">${rows}</ul>`;
+            };
+            const dependenciesHtml = `<div style="margin-bottom: 1rem;">
+                    <div class="form-label">Blocked by:</div>
+                    ${dependencyList(todo.blocked_by)}
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <div class="form-label">Blocks:</div>
+                    ${dependencyList(todo.blocks)}
+                </div>`;
+
             const content = `
                 <div style="display: flex; justify-content: flex-end; margin-bottom: var(--space-2);">
                     <button type="button" id="detailEditButton" class="btn btn-secondary"
@@ -834,6 +854,7 @@ HTML_BASE = """
                 
                 ${tagsHtml}
                 ${dueDateHtml}
+                ${dependenciesHtml}
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; 
                              font-size: 0.875rem; color: var(--color-text-muted); margin-top: 1.5rem;">
@@ -1161,6 +1182,10 @@ def todo_to_dict(todo: Todo) -> dict:
     }
 
 
+def dependency_summary(todo: Todo) -> dict:
+    return {"id": todo.id, "description": todo.description, "status": todo.status.value}
+
+
 @app.get("/todos/{todo_id}/details")
 async def get_todo_details(todo_id: int, session: Session = Depends(get_session)):
     """Get detailed information about a specific todo"""
@@ -1170,7 +1195,23 @@ async def get_todo_details(todo_id: int, session: Session = Depends(get_session)
 
     from fastapi.responses import JSONResponse
 
-    return JSONResponse(todo_to_dict(todo))
+    details = todo_to_dict(todo)
+    blocked_by_rows = session.exec(
+        select(Todo)
+        .join(TodoDependency, TodoDependency.blocker_id == Todo.id)  # type: ignore[arg-type]
+        .where(TodoDependency.blocked_id == todo_id)
+        .order_by(Todo.id)  # type: ignore[arg-type]
+    ).all()
+    blocks_rows = session.exec(
+        select(Todo)
+        .join(TodoDependency, TodoDependency.blocked_id == Todo.id)  # type: ignore[arg-type]
+        .where(TodoDependency.blocker_id == todo_id)
+        .order_by(Todo.id)  # type: ignore[arg-type]
+    ).all()
+    details["blocked_by"] = [dependency_summary(t) for t in blocked_by_rows]
+    details["blocks"] = [dependency_summary(t) for t in blocks_rows]
+
+    return JSONResponse(details)
 
 
 @app.put("/todos/{todo_id}")
