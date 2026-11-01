@@ -365,14 +365,17 @@ HTML_BASE = """
             opacity: 1;
         }
 
-        .todo-card:focus-visible,
-        .btn:focus-visible,
-        .btn-sm:focus-visible,
+        :focus-visible,
+        .todo-card:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
         .form-input:focus-visible,
         .form-select:focus-visible,
         .form-textarea:focus-visible {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 2px;
+            outline-offset: 0;
+            border-color: var(--color-primary);
         }
 
         .status-message {
@@ -475,14 +478,6 @@ HTML_BASE = """
             resize: vertical;
         }
 
-        .form-input:focus,
-        .form-select:focus,
-        .form-textarea:focus {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 0;
-            border-color: var(--color-primary);
-        }
-
         .form-error {
             color: var(--color-danger-text, var(--color-danger));
             font-size: var(--text-sm);
@@ -565,12 +560,12 @@ HTML_BASE = """
             <form hx-post="/todos" hx-target="#kanban-board" hx-swap="innerHTML">
                 <div class="form-group">
                     <label class="form-label">Description</label>
-                    <textarea name="description" class="form-textarea" required 
+                    <textarea name="description" class="form-input form-textarea" required 
                               placeholder="What needs to be done?"></textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Detailed Description (Optional)</label>
-                    <textarea name="long_description" class="form-textarea" 
+                    <textarea name="long_description" class="form-input form-textarea" 
                               style="min-height: 120px;" 
                               placeholder="Additional details, requirements, context, or notes..."></textarea>
                 </div>
@@ -713,13 +708,13 @@ HTML_BASE = """
                     <div id="editError" class="form-error" role="alert"></div>
                     <div class="form-group">
                         <label class="form-label" for="editDescription">Description (required)</label>
-                        <textarea id="editDescription" name="description" class="form-textarea"
+                        <textarea id="editDescription" name="description" class="form-input form-textarea"
                                   required>${descText}</textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="editLongDescription">Detailed Description</label>
                         <textarea id="editLongDescription" name="long_description"
-                                  class="form-textarea">${longDescText}</textarea>
+                                  class="form-input form-textarea">${longDescText}</textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="editPriority">Priority</label>
@@ -1104,7 +1099,7 @@ def generate_kanban_html(session: Session) -> str:
                     </div>
                 </div>
                 <div class="card-actions">
-                    <button class="btn btn-sm" hx-delete="/todos/{todo_id}"
+                    <button class="btn btn-secondary btn-sm" hx-delete="/todos/{todo_id}"
                             hx-target="#kanban-board" hx-swap="innerHTML"
                             hx-confirm="Delete this todo?">Delete</button>
                 </div>
